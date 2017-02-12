@@ -8,7 +8,7 @@ readonly CL_ERROR=5              # Content-Length is 0 or header is missing
 readonly KILLED_ERROR=6          # killed with SIGHUP | SIGINT | SIGTERM
 
 readonly PROGNAME=$(basename $0)
-readonly VERSION=2
+readonly VERSION=2.1
 readonly ERROR_SOUND="/home/rosario/Scaricati/breaking-some-glass.ogg"
 readonly NOTIFY_SOUND="/home/rosario/Scaricati/demonstrative.ogg"
 readonly Blue='\033[01;34m'
@@ -18,6 +18,12 @@ readonly Green='\033[01;32m'
 readonly E='\033[01;41m'
 readonly W='\033[01;43m'
 readonly Reset='\033[00m'
+
+pplot=/tmp/progress.data
+[[ -e $pplot ]] && rm $pplot
+
+gplt_script=/tmp/gplt_script.plt
+[[ -e $gplt_script ]] && rm $gplt_script
 
 alias cvlc="cvlc -q --no-loop --play-and-exit"
 
@@ -30,36 +36,38 @@ function print_usage
 	echo "big files. It uses curl in parallel, downloading N chunk of"
 	echo "the file and then ricombine the chunks in one file."
 	echo
+	echo "Mandatory arguments to long options are mandatory for short options too."
+	echo
 	echo "Required:"
 	echo
-	echo "  -u URL, --url[=]URL        the URL of the file to be downloaded"
+	echo "  -u, --url[=]URL          the URL of the file to be downloaded"
 	echo
 	echo "Options:"
 	echo 
-	echo "  -n N, --nthreads[=]N       [18] the number of threads used for parallel"
+	echo "  -n, --nthreads[=]N       [18] the number of threads used for parallel"
 	echo "                               download. The file will be divided in"
 	echo "                               in N chunks"
 	echo
-	echo "  -o F_OUT, --output[=]F_OUT"
-	echo "                             the output file name"
+	echo "  -o, --output[=]F_OUT     the output file name"
 	echo
-	echo "  -v, --verbose              print more info in stdout"
+	echo "  -v, --verbose            print more info in stdout"
 	echo
-	echo "  -d, --use-dd               use dd to write the chunks on a single file"
-	echo "                               downloading a video you can see a preview"
+	echo "  -d, --use-dd             use dd to write the chunks on a single file"
+	echo "                             downloading a video you can see a preview"
 	echo
-	echo "  --md5[=]VALUE              calculates the md5sum of the output file and"
-	echo "                               compares with VALUE"
+	echo "  --md5[=]VALUE            calculates the md5sum of the output file and"
+	echo "                             compares with VALUE"
 	echo
-	echo "  --sha1[=]VALUE             calculates the sha1sum of the output file and"
-	echo "                               compares with VALUE"
+	echo "  --sha1[=]VALUE           calculates the sha1sum of the output file and"
+	echo "                             compares with VALUE"
 	echo
-	echo "  -h, --help                 print this message and exit"
+	echo "  -h, --help               print this message and exit"
 	echo
-	echo "  -V, --version              print program name and version"
+	echo "  -V, --version            print program name and version"
 	echo
 }
 
+# play error or notification sounds
 function Play
 {
 	local players=(paplay cvlc mplayer)
@@ -68,6 +76,7 @@ function Play
 	done
 }
 
+# exit with a specific error code
 function exit_error
 {
 	case $1 in
@@ -102,20 +111,28 @@ function exit_error
 	esac
 }
 
+# remove and/or close opened files when killed
 function clean_up
 {
+	local f2rm
 	if [[ $usedd == true ]]; then
-		[[ -e "/tmp/${PROGNAME}*.log" ]] && rm /tmp/${PROGNAME}*.log
+		for f2rm in /tmp/${PROGNAME}*.log; do
+			[[ -e $f2rm ]] && rm $f2rm
+		done
+		for f2rm in /tpm/thread*.data; do
+			[[ -e $f2rm ]] && rm $f2rm
+		done
 	else
-		local f2rm
 		for f2rm in ${output}.part* ; do
 			[[ -e $f2rm ]] && rm $f2rm
 		done
 	fi
+	rm $lockfile
 	exec 200<&-
 	exit_error $KILLED_ERROR $1
 }
 
+# print usage and exit
 [[ $# -eq 0 ]] && exit_error $USAGE
 
 url=""
@@ -205,34 +222,46 @@ done
 echo
 [[ "$url" == "" ]] && exit_error $REQ_OPT_ERROR "-u,--url"
 
+# new download algorithm
 function RunThread 
 {
-	# this function download a chunk of N bytes of the file and check if
-	# it is completely downloaded, otherwise will try to download it 
-	# completely. This function will be executed in parallel
+	# this function download a chunk of N bytes and write in the output
+	# file using "dd". In this way all the chunks will be downloaded
+	# together in parallel on the same file. Check if the chunk is completely
+	# downloaded, otherwise will try to download it completely
 	
 	local threadID=$1
-	local fstart=$2
-	local fstop=$3
-	local foffset=$fstart
-	local flog=/tmp/${PROGNAME}$!.log
-	local ddargs="oflag=seek_bytes conv=notrunc,sparse"
+	local fstart=$2                     # the start byte
+	local fstop=$3                      # the stop byte
+	local foffset=$fstart               # the offset byte to continue an incomplete download
+	                                    # initialized to start byte
+	local flog=/tmp/${PROGNAME}$$.log   # curl log file, needed for checking errors
+	local fdata=/tmp/thread${threadID}.data     # file of data to plot threads statistics
+	local ddargs="oflag=seek_bytes conv=notrunc,sparse status=progress"
 	local bytes_copied=0
 	
+	[[ -e $fdata ]] && rm $fdata
 	while [[ $foffset -lt $fstop ]]; do
-	    # download (fstop-foffset) bytes of the file in a temp file
+	    # download (fstop-foffset)
 		# if the foffset byte is equal to the fstop byte then the chunk
 		# is completely downloaded
+		
+		# acquire lock to write messages on stdout
 		if [[ $verbose == true ]]; then
 		(
 			flock -n 200
 			printf "Thread${Blue}%d${Reset} %d - %d\n" $threadID $fstart $fstop
 		)200>>$lockfile
 		fi
-		bytes_copied=$(curl -f --range ${foffset}-${fstop} $url 2>$flog | dd of=$output $ddargs seek=$foffset 2>&1 |awk '/bytes/ { print $1 }')
+		
+		# curl donwnload the chunk and dd write on $output in the foffset position
+		# the dd's progress informations will be written to a file. stdbuf -oL force the flush on stdout line by line
+		# the flush is needed because threads progress will be plotted using gnuplot
+		curl -f --range ${foffset}-${fstop} $url 2>$flog | dd of=$output $ddargs seek=$foffset 2>&1 | stdbuf -oL tr '\r' '\n' >> $fdata
+		
 		# if the connection drop continue the download updating the offset
+		bytes_copied=$(tail -n1 $fdata | stdbuf -oL awk '/bytes/ { print $1 }')
 		foffset=$[$fstart+$bytes_copied]
-		#printf "Thread%d bytes down=%d\n" $threadID $bytes_copied
 		grep -q error $flog
 		if [[ $? -eq 0 ]]; then
 			# the server has sent an error message
@@ -256,9 +285,10 @@ function RunThread
 		
 }
 
+# old download algorithm
 function StartThread
 {
-	# this function download a chunk of N bytes of the file and check if
+	# this function download a chunk of N bytes on the file &ffname and check if
 	# it is completely downloaded, otherwise will try to download it 
 	# completely. This function will be executed in parallel
 	
@@ -323,8 +353,8 @@ function progress_bar
 	declare -i last_fdim
 	declare -i down_rate
 	declare -i percent
-	foo="##################################################"
-	spaces="[                                                  ]"
+	foo="##################################################"       # 50 characters
+	spaces="[                                                  ]"  # 50 characters
 	while true; do
 		sleep 1
 		last_fdim=$actual_fdim
@@ -338,14 +368,56 @@ function progress_bar
 		fi
 		down_rate=$[($actual_fdim - $last_fdim)/1024]  # /1024 in KB/s
 		percent=$[($actual_fdim*100)/$content_length]
-		bar="${foo:0:$[$percent/2]}"
+		bar="${foo:0:$[$percent/2]}"    # string with $percent/2 '#' to replace the spaces
+		# acquire lock
 		(
 			flock -n 200
 			printf "\r%s %d%s  %d KB/s  " "${spaces/"${spaces:1:$[$percent/2]}"/$bar}" $percent "%" $down_rate
 		)200>>$lockfile
-		#[[ $actual_fdim -eq $content_length ]] && break
+		# break if there are no more curl process
+		# the breaking could occur when the percentage is equal to 100
+		# but because of the sleep 1 at the begining this, method is faster
 		[[ $(pgrep -c curl) -eq 0 ]] && break
 	done
+}
+
+function progress_graph
+{
+	# write gnuplot script
+	printf "set boxwidth 0.75\n" >> $gplt_script
+	printf "set style fill solid\n" >> $gplt_script
+	printf "set title \"%s\"\n" $output >> $gplt_script
+	printf "set xrange [0:%s]\n" $[$nthreads+1] >> $gplt_script
+	printf "set yrange [0:110]\n" >> $gplt_script
+	printf "plot \"%s\" using 1:3:xtic(2) with boxes\n" $pplot >> $gplt_script
+	printf "pause 1\n" >> $gplt_script
+	printf "reread\n" >> $gplt_script
+	
+	# write data for gnuplot
+	local actual_bytes
+	declare -i actual_bytes=0
+	local percent=0
+	local chunk_size=$[$content_length/$nthreads]
+	local plotdata
+	while : ;do
+		[[ $(pgrep -c curl) -eq 0 ]] && break
+		plotdata=""
+		for ((i=1;i<=$nthreads;i++)); do
+			[[ $i -eq $nthreads ]] && chunk_size=$[$chunk_size+$rest] #&& printf "actual_bytes %d\n" $actual_bytes
+			if [[ $usedd == true ]]; then
+				actual_bytes=$(tail -n1 /tmp/thread${i}.data | awk '/bytes/ { print $1 }')
+			else
+				[[ -e ${output}.part$i.tmp ]] && actual_bytes=$(du -b ${output}.part$i.tmp |awk '{ print $1 }')
+				actual_bytes+=$(du -b ${output}.part$i |awk '{ print $1 }')
+			fi
+			[[ $actual_bytes != 0 ]] && percent=$[($actual_bytes*100)/$chunk_size]
+			plotdata+="$i T$i $percent   \n"
+			actual_bytes=0
+		done
+		echo -en $plotdata |dd of=$pplot seek=0 status=none
+		sleep 1
+	done
+	rm $pplot
 }
 
 function touch_output
@@ -468,6 +540,15 @@ done
 # progress bar
 progress_bar &
 
+progress_graph &
+while : ; do
+	[[ -e $pplot ]] && break
+done
+gnuplot $gplt_script &> /dev/null
+#while : ; do
+#	sleep 1
+#	[[ $(pgrep -c curl) -eq 0 ]] && break
+#done
 
 wait  # wait and join the threads when finished
 echo
@@ -489,6 +570,7 @@ if [[ $usedd == false ]]; then
 	done
 else
 	rm /tmp/${PROGNAME}*.log
+	rm /tmp/thread*.data
 fi
 
 if [ $time_elapsed -gt 60 ]; then
@@ -507,4 +589,5 @@ if [[ $checksum != "" ]]; then
 		[[ $($checksum "$output" |awk '{ print $1 }') == $sha1 ]] && printf "${Green}*****OK*****$Reset\n" || printf "${Red}*****NO*****$Reset\n"
 	fi
 fi
+rm $lockfile
 echo
