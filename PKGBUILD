@@ -16,8 +16,8 @@ conflicts=()
 
 package() {
   cd "${srcdir}"
-  [ ! -d "${pkgdir}/usr/bin/" ] && mkdir -p ${pkgdir}/usr/bin/
-  [ ! -d "${pkgdir}/usr/share/mpd/" ] && mkdir -p ${pkgdir}/usr/share/mpd/
+  mkdir -p ${pkgdir}/usr/bin/
+  mkdir -p ${pkgdir}/usr/share/mpd/
   cp demonstrative.ogg breaking-some-glass.ogg ${pkgdir}/usr/share/mpd/
   cp scarica2.sh ${pkgdir}/usr/bin/multiprocdown
   chmod a+x ${pkgdir}/usr/bin/multiprocdown
