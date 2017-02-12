@@ -23,6 +23,6 @@ package() {
   chmod a+x ${pkgdir}/usr/bin/multiprocdown
   cd ${pkgdir}/usr/bin/
   ln -s multiprocdown mpd
-  sed -e 's:/home/rosario/Scaricati/:/usr/share/mpd:g' -i multiprocdown
+  sed -e 's:/home/rosario/Scaricati/:/usr/share/mpd/:g' -i multiprocdown
 }
 
