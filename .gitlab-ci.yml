@@ -1,0 +1,11 @@
+stages:
+- package
+
+Arch:
+  stage: package
+  image: buddaci/archlatex
+  script:
+  - makepkg
+  artifacts:
+    paths:
+    - multiprocdown-*.tar.xz
