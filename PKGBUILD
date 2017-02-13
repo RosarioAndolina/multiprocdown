@@ -10,6 +10,7 @@ license=('none')
 url="https://gitlab.com/tumeo-boys/multiprocdown"
 depends=('gnuplot' 'awk' 'pulseaudio' 'curl' 'bash' 'grep')
 makedepends=('sed')
+optdepends=('mplayer: alternative audio support' 'vlc: alternative audio support')
 provides=('multiprocdown')
 replaces=()
 conflicts=()
