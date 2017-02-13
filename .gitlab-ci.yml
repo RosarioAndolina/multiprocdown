@@ -6,6 +6,7 @@ Arch:
   image: base/archlinux
   script:
   - useradd ci
+  - chown -r ci *
   - su -u ci makepkg
   artifacts:
     paths:
