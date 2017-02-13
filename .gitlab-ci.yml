@@ -3,9 +3,10 @@ stages:
 
 Arch:
   stage: package
-  image: buddaci/archlatex
+  image: base/archlinux
   script:
-  - makepkg
+  - useradd ci
+  - su -u ci makepkg
   artifacts:
     paths:
     - multiprocdown-*.tar.xz
