@@ -7,7 +7,7 @@ Arch:
   script:
   - useradd ci
   - chown -R ci *
-  - su -u ci makepkg
+  - sudo -u ci makepkg
   artifacts:
     paths:
     - multiprocdown-*.tar.xz
