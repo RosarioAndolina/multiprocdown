@@ -7,7 +7,7 @@ Arch:
   script:
   - useradd ci
   - chown -R ci *
-  - pacman -Sy archlinux-keyring
+  - pacman -Sy --noconfirm archlinux-keyring
   - pacman -S --noconfirm sudo binutils fakeroot pulseaudio
   - sudo -u ci makepkg
   artifacts:
