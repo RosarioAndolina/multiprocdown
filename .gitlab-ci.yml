@@ -7,7 +7,7 @@ Arch:
   script:
   - useradd ci
   - chown -R ci *
-  - pacman -S --noconfirm sudo
+  - pacman -Sy --noconfirm sudo
   - sudo -u ci makepkg
   artifacts:
     paths:
