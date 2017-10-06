@@ -3,9 +3,13 @@ stages:
 
 Arch:
   stage: package
-  image: buddaci/archlatex
+  image: base/archlinux
   script:
-  - makepkg
+  - useradd ci
+  - chown -R ci *
+  - pacman -Sy --noconfirm archlinux-keyring
+  - pacman -S --noconfirm sudo binutils fakeroot pulseaudio
+  - sudo -u ci makepkg
   artifacts:
     paths:
     - multiprocdown-*.tar.xz
