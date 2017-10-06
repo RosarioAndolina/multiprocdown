@@ -2,14 +2,13 @@
 # Developer: Rosario Andolina <andolinarosario@gmail.com>
 # Contributor: Carmelo Pellegrino <carmelo.pellegrino@gmail.com>
 pkgname=multiprocdown
-pkgver=1
-pkgrel=2
+pkgver=2
+pkgrel=1
 pkgdesc="Fasten download processes with parallelism"
 arch=(any)
 license=('none')
 url="https://gitlab.com/tumeo-boys/multiprocdown"
-depends=('gnuplot' 'awk' 'pulseaudio' 'curl' 'bash' 'grep')
-makedepends=('sed')
+depends=('gnuplot' 'gawk' 'pulseaudio' 'curl')
 provides=('multiprocdown')
 replaces=()
 conflicts=()
