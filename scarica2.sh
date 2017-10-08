@@ -83,6 +83,7 @@ snapfileL=""                   # snapshot file to load
 loadedst=()                    # loaded threads snapshot start and stop
 usetor=false                   # connect through Tor
 proxy=""
+lock_fd=200                    # lock file file descriptor
 
 
 #_______________________________________________________________________
@@ -305,7 +306,7 @@ function clean_up
         rm -f "${output}.part*"
     fi
     
-    exec 200<&-
+    exec {lock_fd}<&-
     rm -f $lockfile
     exit_error $KILLED_ERROR $1
 }
@@ -347,9 +348,9 @@ function RunThread
     # acquire lock to write messages on stdout
     if [[ $verbose == true ]]; then
     (
-        flock -n 200
+        flock -n ${lock_fd}
         printf "\rThread${Blue}%d${Reset} %d - %d\n" $threadID $fstart $fstop
-    )200>>$lockfile
+    ){lock_fd}>>$lockfile
     fi
     [[ -e $fdata ]] && rm $fdata
     while [[ $foffset -lt $fstop ]]; do
@@ -370,9 +371,9 @@ function RunThread
             # the server has sent an error message
             # maybe it only accepts a limited number of connections from the same IP address
             (
-                flock -n 200
+                flock -n ${lock_fd}
                 printf "\r${White}Thread${Blue}%d${Reset} interrupted by the server. Will restart ASAP\n" $threadID
-            )200>>$lockfile
+            ){lock_fd}>>$lockfile
             sleep 0.5
             # counts the number of active connections
             local active_conn=$(pgrep -c curl)
@@ -380,14 +381,14 @@ function RunThread
                 sleep 1  # sleep until one or more active connections have finished their work
             done
             (
-                flock -n 200
+                flock -n ${lock_fd}
                 printf "\r${White}Thread${Blue}%d ${Reset}restarted\n" $threadID
-            )200>>$lockfile
+            ){lock_fd}>>$lockfile
         elif [[ $foffset -lt $fstop ]]; then
             (
-                flock -n 200
+                flock -n ${lock_fd}
                 printf "\r${White}Thread${Blue}%d ${Reset}connection dropped and restarted\n" $threadID
-            )200>>$lockfile
+            ){lock_fd}>>$lockfile
         fi
     done
         
@@ -480,9 +481,9 @@ function progress_bar
         percent=$[($actual_fdim*100)/$content_length]
         # acquire lock
         (
-            flock -n 200
+            flock -n ${lock_fd}
             printf " [%-${barlength}s] %3d%% %6d KB/s\r" "${bar:0:$[(${#bar}*$percent)/100]}" $percent $down_rate
-        )200>>$lockfile
+        ){lock_fd}>>$lockfile
         # break if there are no more curl process
         [[ $(pgrep -c curl) -eq 0 ]] && break
     done
@@ -575,7 +576,7 @@ function touch_output
 
 mkdir -p /tmp/lock
 lockfile="/tmp/lock/${PROGNAME}$$.lock"
-exec 200>$lockfile
+exec {lock_fd}>$lockfile
 
 # parse options
 while [[ $# -gt 0 ]]; do
@@ -1021,7 +1022,7 @@ echo "Download rate: $down_rate KB/s in $(human_time $time_elapsed)"
     #echo "Download rate: $[$content_length/($time_elapsed*1024)]KB/s in ${time_elapsed}s"
 #fi
 
-exec 200<&-   # close the lock file
+exec {lock_fd}<&-   # close the lock file
 
 if [[ $checksum != "" ]]; then
     printf "\nchecking %s...\n" $checksum
