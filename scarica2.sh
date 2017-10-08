@@ -188,7 +188,6 @@ function Play
 {
     local players=(paplay cvlc mplayer)
     for p in $players; do
-		echo "$p $1"
         which "$p" &> /dev/null && "$p" "$1" &> /dev/null && break
     done
 }
