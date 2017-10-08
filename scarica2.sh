@@ -169,6 +169,7 @@ function Play
 {
     local players=(paplay cvlc mplayer)
     for p in $players; do
+		echo "$p $1"
         which "$p" &> /dev/null && "$p" "$1" &> /dev/null && break
     done
 }
@@ -352,7 +353,7 @@ function RunThread
             # maybe it only accepts a limited number of connections from the same IP address
             (
                 flock -n 200
-                printf "$\r{White}Thread${Blue}%d${Reset} interrupted by the server. Will restart ASAP\n" $threadID
+                printf "\r${White}Thread${Blue}%d${Reset} interrupted by the server. Will restart ASAP\n" $threadID
             )200>>$lockfile
             sleep 0.5
             # counts the number of active connections
