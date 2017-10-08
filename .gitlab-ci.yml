@@ -1,0 +1,15 @@
+stages:
+- package
+
+Arch:
+  stage: package
+  image: base/archlinux
+  script:
+  - useradd ci
+  - chown -R ci *
+  - pacman -Sy --noconfirm archlinux-keyring
+  - pacman -S --noconfirm sudo binutils fakeroot pulseaudio
+  - sudo -u ci makepkg
+  artifacts:
+    paths:
+    - multiprocdown-*.tar.xz
