@@ -83,8 +83,8 @@ snapfileL=""                   # snapshot file to load
 loadedst=()                    # loaded threads snapshot start and stop
 usetor=false                   # connect through Tor
 proxy=""
-lock_fd=200                    # lock file file descriptor
-
+lock_fd=200                    # lock-file file descriptor
+snap_fd=3                      # snapshot file descriptor
 
 #_______________________________________________________________________
 function print_usage
@@ -307,6 +307,7 @@ function clean_up
     fi
     
     exec {lock_fd}<&-
+    [[ $loadsnap == true ]] && exec {snap_fd}<&-
     rm -f $lockfile
     exit_error $KILLED_ERROR $1
 }
@@ -770,7 +771,7 @@ if [[ $loadsnap == true ]]; then
     if [[ -e "$snapfileL" ]]; then
         grep -q snapshot "$snapfileL" 2>>/dev/null
         if [[ $? -eq 0 ]]; then
-            exec 3<"$snapfileL"           # open the file with FD 3
+            exec {snap_fd}<"$snapfileL"           # open the file with FD snp_fd
         else
             #echo "${E}Error:$Reset the file $snapfileL isn't a snapshot"
             #exit 7
@@ -781,19 +782,19 @@ if [[ $loadsnap == true ]]; then
         #exit 7
         exit_error $FNF_ERROR "$snapfileL"
     fi
-    read -r -u 3 line                    # skip first line
-    read -r -u 3 output                  # get output file name
-    read -r -u 3 url                     # get url
-    #read -r -u 3 graph                   # get the graph flag
-    read -r -u 3 usedd                   # get the usedd flag
-    read -r -u 3 -a chunks_rate          # get chunks_rate
-    read -r -u 3 snapchunk               # get current chunk
-    read -r -u 3 chunkstart              # the start byte of the current chunk
-    read -r -u 3 nthreads                # get nthreads for chunk
-    read -r -u 3 -a loadeds              # get threads start
-    read -r -u 3 -a thsnapbc             # the bytes copied by the threads before exit
-    exec 3<&-                            # close the file
-    nchunks=${#chunks_rate[@]}           # set nchunks
+    read -r -u ${snap_fd} line                    # skip first line
+    read -r -u ${snap_fd} output                  # get output file name
+    read -r -u ${snap_fd} url                     # get url
+    #read -r -u ${snap_fd} graph                   # get the graph flag
+    read -r -u ${snap_fd} usedd                   # get the usedd flag
+    read -r -u ${snap_fd} -a chunks_rate          # get chunks_rate
+    read -r -u ${snap_fd} snapchunk               # get current chunk
+    read -r -u ${snap_fd} chunkstart              # the start byte of the current chunk
+    read -r -u ${snap_fd} nthreads                # get nthreads for chunk
+    read -r -u ${snap_fd} -a loadeds              # get threads start
+    read -r -u ${snap_fd} -a thsnapbc             # the bytes copied by the threads before exit
+    exec {snap_fd}<&-                             # close the file
+    nchunks=${#chunks_rate[@]}                    # set nchunks
 fi
 
 # check required options
