@@ -1,0 +1,13 @@
+# gitignore - to ignore specified files
+*.bk
+*.backup
+pkg/
+build/
+autom4te.cache/
+config.log
+config.status
+test/
+*.xz
+Makefile
+src/Makefile
+share/Makefile
