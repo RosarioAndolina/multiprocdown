@@ -11,3 +11,8 @@ test/
 Makefile
 src/Makefile
 share/Makefile
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+src/multiprocdow

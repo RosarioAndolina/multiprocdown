@@ -38,10 +38,13 @@ readonly TOR_INST_RUN=2          # tor is installed and service running
 readonly TOR_NOTINST=3           # tor is't installed
 torflag=0
 
-readonly PROGNAME=$(basename $0)
-readonly VERSION=2.1
-readonly ERROR_SOUND="/home/rosario/programmi/bash/scarica/breaking-some-glass.ogg"
-readonly NOTIFY_SOUND="/home/rosario/programmi/bash/scarica/demonstrative.ogg"
+readonly PROGNAME="@PACKAGE@"
+readonly VERSION="@VERSION@"
+readonly INSTALL_DIR=@CMAKE_INSTALL_PREFIX@
+readonly SOUND_DIR=${INSTALL_DIR}/share/${PROGNAME}
+echo "********* SOUND_DIR = ${SOUND_DIR} *************"
+readonly ERROR_SOUND="${SOUND_DIR}/breaking-some-glass.ogg"
+readonly NOTIFY_SOUND="${SOUND_DIR}/demonstrative.ogg"
 readonly TEMPDIR=/tmp/$PROGNAME
 readonly Blue='\033[01;34m'
 readonly White='\033[01;37m'
