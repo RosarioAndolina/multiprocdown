@@ -1,4 +1,4 @@
-##multiprocdown - Fasten download processes with parallelism
+## multiprocdown - Fasten download processes with parallelism
 
 Author: Rosario Andolina <andolinarosario@gmail.com>
 Copyright (C) 2017  Rosario Andolina
@@ -17,17 +17,19 @@ You should have received a copy of the GNU General Public License along
 with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-###dependecies:
+### dependecies:
+
 	* curl
 	* awk
 
-##optionals dependecies:
+### optionals dependecies:
+
 	* pulseaudio|mplayer|vlc: audio support
 	* gnuplot: graphic support
 
-##installation:
+### installation:
 
-	``` bash
+	```bash
 	cmake -DCMAKE_INSTALL_PREFIX=<your_build_directory>
 	make && make install```
 	
@@ -42,7 +44,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 		make && make install```
 
 
-###Usage: multiprocdown -u URL | --url[=]URL [OPTIONS]...
+### Usage: multiprocdown -u URL | --url[=]URL [OPTIONS]...
 
 **multiprocdown** is a multiprocess download utility very useful for
 big files. It uses curl, downloading N chunk of the file in parallel
