@@ -26,6 +26,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 * pulseaudio|mplayer|vlc: audio support
 * gnuplot: graphic support
+* tor: download anonimously
 
 ### installation:
 

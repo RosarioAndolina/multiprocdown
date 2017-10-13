@@ -831,15 +831,15 @@ while [[ $content_length -eq 0 ]]; do
     location=""
     while [[ $# -gt 0 ]]; do
         case $1 in
-            Content-Length*)
+            Content-Length*|content-length*)
             content_length=${2%*$'\r'*} #get the left part at the first occurrence of \r (excluded)
             printf "content length: %d\n" $content_length
             ;;
-            Content-Type*)
+            Content-Type*|content-type*)
             file_ext=$(echo ${2%*$'\r'*} |awk -F '/' '{ print $2 }') #get the file extension
             file_ext=${file_ext%[;,.[:space:]]*}
             ;;
-            Location*)
+            Location*|location*)
             location=${2%$'\r'*}
             ;;
         esac

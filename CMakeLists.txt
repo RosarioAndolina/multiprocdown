@@ -1,7 +1,7 @@
 
 cmake_minimum_required(VERSION 2.6)
 
-set(PACKAGE multiprocdow)
+set(PACKAGE multiprocdown)
 set(VERSION 2.1)
 project(${PACKAGE})
 
