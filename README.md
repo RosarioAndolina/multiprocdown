@@ -47,8 +47,6 @@ cmake -DCMAKE_INSTALL_PREFIX="${you_build_dir}"
 make && make install
 ```
 
-
-### Usage
 ### Usage
 
 ```bash
