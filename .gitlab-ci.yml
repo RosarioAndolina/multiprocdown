@@ -18,7 +18,7 @@ pachage:
     - multiprocdown-*.tar.xz
 
 test:
-  stage: install
+  stage: test
   script:
   - pacman -U --noconfirm multiprocdown-*.tar.xz
   - ls -l /usr/bin/multiprocdown
