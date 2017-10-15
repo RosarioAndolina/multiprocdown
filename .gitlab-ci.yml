@@ -10,10 +10,10 @@ pachage:
   script:
   - useradd ci
   - chown -R ci *
-  - alias cido="sudo -u ci"
+  - cido="sudo -u ci"
   - pacman -Sy --noconfirm archlinux-keyring
   - pacman -S --noconfirm sudo binutils fakeroot make cmake
-  - cido makepkg
+  - $cido makepkg
   artifacts:
     paths:
     - multiprocdown-*.tar.xz
@@ -26,7 +26,7 @@ install:
 test:
   stage: test
   script:
-  - cido multiprocdown -h
+  - $cido multiprocdown -h
   - URL="https://root.cern.ch/root/html534/guides/users-guide/ROOTUsersGuideA4.pdf"
-  - cido multiprocdown -u "$URL" -d -n 2 -o downfile.pdf
+  - $cido multiprocdown -u "$URL" -d -n 2 -o downfile.pdf
   - ls -l downfile.pdf
