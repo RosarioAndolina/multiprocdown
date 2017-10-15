@@ -17,7 +17,7 @@ conflicts=()
 
 package() {
   cd ..
-  cmake -DCMAKE_INSTALL_PREFIX="${pkgdir}/usr"
-  make && make install
+  cmake -DCMAKE_INSTALL_PREFIX="/usr"
+  make && make DESTDIR="${pkgdir}" install
 }
 

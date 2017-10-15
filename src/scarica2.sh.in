@@ -45,7 +45,7 @@ while [[ "${INSTALL_DIR##*/}" != "usr" ]]; do
 	INSTALL_DIR=${INSTALL_DIR%/*}
 done
 readonly SOUND_DIR=${INSTALL_DIR}/share/${PROGNAME}
-echo "********* SOUND_DIR = ${SOUND_DIR} *************"
+echo -e "\n\n********* SOUND_DIR = ${SOUND_DIR} *************"
 readonly ERROR_SOUND="${SOUND_DIR}/breaking-some-glass.ogg"
 readonly NOTIFY_SOUND="${SOUND_DIR}/demonstrative.ogg"
 readonly TEMPDIR=/tmp/$PROGNAME
