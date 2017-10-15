@@ -3,12 +3,12 @@ stages:
 
 Arch:
   stage: package
-  image: base/archlinux
+  image: base/devel
   script:
   - useradd ci
   - chown -R ci *
   - pacman -Sy --noconfirm archlinux-keyring
-  - pacman -S --noconfirm sudo binutils fakeroot cmake
+  - pacman -S --noconfirm sudo binutils cmake
   - sudo -u ci makepkg
   artifacts:
     paths:
