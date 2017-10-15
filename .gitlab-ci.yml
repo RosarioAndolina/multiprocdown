@@ -22,9 +22,10 @@ install:
   stage: install
   script:
   - pacman -U --noconfirm multiprocdown-*.tar.xz
-
+  
 test:
   stage: test
+  script:
   - cido multiprocdown -h
   - URL="https://root.cern.ch/root/html534/guides/users-guide/ROOTUsersGuideA4.pdf"
   - cido multiprocdown -u "$URL" -d -n 2 -o downfile.pdf
