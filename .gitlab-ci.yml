@@ -8,7 +8,7 @@ Arch:
   - useradd ci
   - chown -R ci *
   - pacman -Sy --noconfirm archlinux-keyring
-  - pacman -S --noconfirm sudo binutils fakeroot pulseaudio
+  - pacman -S --noconfirm sudo binutils fakeroot cmake
   - sudo -u ci makepkg
   artifacts:
     paths:
