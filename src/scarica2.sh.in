@@ -40,7 +40,10 @@ torflag=0
 
 readonly PROGNAME="@PACKAGE@"
 readonly VERSION="@VERSION@"
-readonly INSTALL_DIR=@CMAKE_INSTALL_PREFIX@
+INSTALL_DIR=$(dirname ${BASH_SOURCE[0]})
+while [[ "${INSTALL_DIR##*/}" != "usr" ]]; do
+	INSTALL_DIR=${INSTALL_DIR%/*}
+done
 readonly SOUND_DIR=${INSTALL_DIR}/share/${PROGNAME}
 echo "********* SOUND_DIR = ${SOUND_DIR} *************"
 readonly ERROR_SOUND="${SOUND_DIR}/breaking-some-glass.ogg"
