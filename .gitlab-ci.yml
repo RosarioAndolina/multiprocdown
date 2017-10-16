@@ -23,5 +23,10 @@ test:
   - pacman -U --noconfirm multiprocdown-*.tar.xz
   - ls -l /usr/bin/multiprocdown
   - URL="https://root.cern.ch/root/html534/guides/users-guide/ROOTUsersGuideA4.pdf"
-  - $cido multiprocdown -u "$URL" -d -n 2 -o downfile.pdf
+  - MD5="40ae503446d0a073a89e93864b1aa123"
+  - $cido multiprocdown -u "$URL" -d -n 2 --md5=$MD5 -o downfile.pdf
   - ls -l downfile.pdf
+  artifacts:
+    paths:
+    - downfile.pdf
+    expire_in: 1 hrs

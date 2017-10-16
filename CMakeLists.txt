@@ -5,8 +5,8 @@ set(PACKAGE multiprocdown)
 set(VERSION 2.1)
 project(${PACKAGE} NONE)
 
-set(opt_progs gnuplot tor vlc paplay mplayer suca)
-set(req_progs curl awk dd)
+set(opt_progs gnuplot tor vlc paplay mplayer budda_gay)
+set(req_progs curl awk dd which)
 
 include(FindPrograms.cmake)
 
