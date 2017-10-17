@@ -210,10 +210,10 @@ messages_handler()
 	local j=0
 	# wait for messages while there are tasks
 	while [[ $num_working_tasks -gt 0 ]]; do
-		read tid < ${handler_file}
+		read tid < "${handler_file}"
 		if [[ $tid ]]; then                   # a thread has finished
-			echo -n "" > ${handler_file}      # reset the handler file
-			thread_safe_echo "handler: thread#$tid has finished"
+			echo -n "" > "${handler_file}"      # reset the handler file
+			[[ $verbose == true ]] && thread_safe_echo "handler: thread#$tid has finished"
 			num_working_tasks=$[$num_working_tasks-1] # decrement by one
 			# check the threads flags. If one of them is TINT reset to TRUN and break
 			for (( j=0; j<$nthreads; j++ )); do
@@ -226,10 +226,10 @@ messages_handler()
 	done
 	
 	# set the progress bar flag to BSTOP
-	echo "$BSTOP" > $pbar_flag
+	echo "$BSTOP" > "$pbar_flag"
 	
 	# set the progress graph flag to GSTOP
-	[[ $graph == true ]] && echo "$GSTOP" > $pgraph_flag
+	[[ $graph == true ]] && echo "$GSTOP" > "$pgraph_flag"
 	
 	stdbuf -oL echo "-- All threads has finished"
 }
@@ -384,8 +384,10 @@ function clean_up
 	rm -f $msg_lock
 	exec {pbar_flag_fd}<&-
 	rm -f $pbar_flag
-	exec {pgraph_flag_fd}<&-
-	rm -f $pgraph_flag
+	if [[ $graph == true ]]; then
+		exec {pgraph_flag_fd}<&-
+		rm -f $pgraph_flag
+	fi
 	
 	for (( i=0; i<$nthreads; i++ )); do
 		FD=$[$fd_init+$i]
@@ -434,7 +436,7 @@ function RunThread
     trap "rm -f $flog; exit $KILLED_ERROR" INT TERM
     
     # init the flag
-    echo $TRUN > ${threads_flags[$threadID]}
+    echo "$TRUN" > "${threads_flags[$threadID]}"
     
     if [[ $verbose == true ]]; then
 		thread_safe_echo -e -n "\rThread${Blue}${threadID}${Reset} ${fstart} - ${fstop}\n"
@@ -465,10 +467,10 @@ function RunThread
             # maybe it only accepts a limited number of connections from the same IP address
             thread_safe_echo -e "\r${White}Thread${Blue}${threadID}${Reset} interrupted by the server. Will restart ASAP"
             # set the flag to TINT
-			echo $TINT > ${threads_flags[$threadID]}
+			echo "$TINT" > "${threads_flags[$threadID]}"
 			# wait until the handler reset the flag
 			while :; do
-				read tflag < ${threads_flags[$threadID]}
+				read tflag < "${threads_flags[$threadID]}"
 				[[ "$tflag" == "$TRUN" ]] && thread_safe_echo -e "\r${White}Thread${Blue}${threadID}${Reset} restarted" && break
 				sleep 0.1
 			done
@@ -498,7 +500,7 @@ function StartThread
     local tflag
     
     # init the flag
-    echo $TRUN > ${threads_flags[$threadID]}
+    echo "$TRUN" > "${threads_flags[$threadID]}"
     
     if [[ $loadsnap == true ]]; then
         fdropcflag=1
@@ -521,10 +523,10 @@ function StartThread
                 # maybe it only accepts a limited number of connections from the same IP address
                 thread_safe_echo -e "${White}Thread${Blue}$threadID ${Reset}interrupted by the server. Will restart ASAP"
                 # set the flag to TINT
-				echo $TINT > ${threads_flags[$threadID]}
+				echo "$TINT" > "${threads_flags[$threadID]}"
 				# wait until the handler reset the flag
 				while :; do
-					read tflag < ${threads_flags[$threadID]}
+					read tflag < "${threads_flags[$threadID]}"
 					[[ "$tflag" == "$TRUN" ]] && thread_safe_echo -e "\r${White}Thread${Blue}${threadID}${Reset} restarted" && break
 					sleep 0.1
 				done
@@ -1047,7 +1049,7 @@ else
 fi
 
 #trap "save_snapshot; clean_up SIGHUP"  SIGHUP
-trap "save_snapshot; clean_up SIGINT"  SIGINT
+trap "save_snapshot; clean_up; exit_error $KILLED_ERROR SIGINT"  SIGINT
 #trap "save_snapshot; clean_up SIGTERM" SIGTERM
 
 # get the corresponding chunk size in bytes from the chunks_rate in %
@@ -1110,6 +1112,9 @@ while [[ $cc -lt $nchunks ]]; do
     done
     chunkstart=$[$chunkstart+${chunksize[$cc]}]     # update the chunk's start byte
     cc=$[$cc+1]        # update the current chunk num.
+    
+    # start the handler
+    messages_handler $nthreads &
     
     # progress bar
     progress_bar &
