@@ -434,8 +434,7 @@ function RunThread
     trap "rm -f $flog; exit $KILLED_ERROR" INT TERM
     
     # init the flag
-    [[ ! -f "${threads_flags[$threadID]}" ]] && thread_safe_echo -e "\n${threads_flags[$threadID]} doesn't exist" && sleep 0.1 
-    echo "$TRUN" > "${threads_flags[$threadID]}"
+    echo "$TRUN" > "${threads_flags[$threadID]}" &> /dev/null
     
     if [[ $verbose == true ]]; then
 		thread_safe_echo -e -n "\rThread${Blue}${threadID}${Reset} ${fstart} - ${fstop}\n"
@@ -500,7 +499,7 @@ function StartThread
     local tflag
     
     # init the flag
-    echo "$TRUN" > "${threads_flags[$threadID]}"
+    echo "$TRUN" > "${threads_flags[$threadID]}" &> /dev/null
     
     if [[ $loadsnap == true ]]; then
         fdropcflag=1
