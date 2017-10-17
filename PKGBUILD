@@ -2,7 +2,7 @@
 # Developer: Rosario Andolina <andolinarosario@gmail.com>
 # Contributor: Carmelo Pellegrino <carmelo.pellegrino@gmail.com>
 pkgname=multiprocdown
-pkgver=2.1
+pkgver=2.2
 pkgrel=1
 pkgdesc="Fasten download processes with parallelism"
 arch=(any)
