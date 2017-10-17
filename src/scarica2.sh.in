@@ -42,6 +42,8 @@ readonly TINT=1                  # thread interrupted flag
 readonly TRUN=0                  # thread runnig flag
 readonly BRUN=0                  # progress bar running flag
 readonly BSTOP=1                 # progress bar stop flag
+readonly GRUN=0                  # progress graph run flag
+readonly GSTOP=1                 # progress graph stop flag
 
 readonly PROGNAME="@PACKAGE@"
 readonly VERSION="@VERSION@"
@@ -226,6 +228,9 @@ messages_handler()
 	# set the progress bar flag to BSTOP
 	echo "$BSTOP" > $pbar_flag
 	
+	# set the progress graph flag to GSTOP
+	[[ $graph == true ]] && echo "$GSTOP" > $pgraph_flag
+	
 	stdbuf -oL echo "-- All threads has finished"
 }
 
@@ -371,14 +376,16 @@ function clean_up
         rm -f "${output}.part*"
     fi
     
-    exec {handler_fd}<&-
-	rm -f $handler_file
+    exec {handler_fd}<&-              # close
+	rm -f $handler_file               # remove
 	exec {echo_lock_fd}<&-
 	rm -f $echo_lock
 	exec {msg_lock_fd}<&-
 	rm -f $msg_lock
 	exec {pbar_flag_fd}<&-
 	rm -f $pbar_flag
+	exec {pgraph_flag_fd}<&-
+	rm -f $pgraph_flag
 	
 	for (( i=0; i<$nthreads; i++ )); do
 		FD=$[$fd_init+$i]
@@ -587,6 +594,9 @@ function progress_bar
 #______________________________________________________________________________
 function progress_graph
 {
+	# init the flag
+	echo "$GRUN" > "pgraph_flag"
+	
     # write gnuplot script
     printf "set boxwidth 0.75\n" >> $gplt_script
     printf "set style fill solid\n" >> $gplt_script
@@ -602,11 +612,16 @@ function progress_graph
     local percent=0
     local chunk_size=$[$content_length/$nthreads]
     local ILchunk_size=$chunk_size
-    #printf "chunk_size = %s\n" $chunk_size $test
+    local flag
     local plotdata
+    
     trap "rm -f $pplot; exit $KILLED_ERROR" INT TERM
     while : ;do
-        [[ $(pgrep -c curl) -eq 0 ]] && break
+    
+		# break if there are no more running threads
+        read flag < "$pgraph_flag"
+        [[ "$flag" == "$GSTOP" ]] && break
+        
         plotdata=""
         actual_bytes=0
         for ((i=1;i<=$nthreads;i++)); do
@@ -932,6 +947,13 @@ fi
 # check gnuplot if installed
 if [[ $graph == true ]]; then
     which gnuplot &> /dev/null || exit_error $GP_ERROR
+fi
+
+# open progress graph flag file
+if [[ $graph == true ]]; then
+	pgraph_flag_fd=304
+	pgraph_flag="/tmp/flags/pgraph_flag"
+	exec {pgraph_flag_fd}<> "$pgraph_flag"
 fi
 
 # initialize thsnapbc
