@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 2.6)
 
 set(PACKAGE multiprocdown)
-set(VERSION 2.1)
+set(VERSION 2.2)
 project(${PACKAGE} NONE)
 
 set(opt_progs gnuplot tor vlc paplay mplayer budda_gay)
