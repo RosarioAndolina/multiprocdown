@@ -481,6 +481,10 @@ function StartThread
     local foffset=$fstart
     local fdropcflag=0                  # flag for dropped connection
     local ffname="${output}.part${threadID}"
+    local tflag
+    
+    # init the flag
+    echo $TRUN > ${threads_flags[$threadID]}
     
     if [[ $loadsnap == true ]]; then
         fdropcflag=1
@@ -490,6 +494,7 @@ function StartThread
     fi
     
     trap "exit $KILLED_ERROR" INT TERM
+    
     while [ $foffset -lt $fstop ]; do
         # download (fstop-foffset) bytes of the file in a temp file
         # if the foffset byte is equal to the fstop byte then the chunk
@@ -500,21 +505,22 @@ function StartThread
             if [ $? -eq 0 -a "$(file \"${ffname}.tmp\" |awk '{ print $2 }')" == "HTML" ]; then
                 # the server has sent an error message
                 # maybe it only accepts a limited number of connections from the same IP address
-                echo -e "${White}Thread${Blue}$threadID ${Reset}interrupted by the server. Will restart ASAP"
-                sleep 0.5
-                # counts the number of active connections
-                local active_conn=$(pgrep -c curl)
-                while [[ $(pgrep -c curl) -ge $active_conn ]]; do
-                    sleep 1  # sleep until one or more active connections have finished their work
-                done
-                echo -e "${White}Thread${Blue}$threadID ${Reset}restarted"
+                thread_safe_echo -e "${White}Thread${Blue}$threadID ${Reset}interrupted by the server. Will restart ASAP"
+                # set the flag to TINT
+				echo $TINT > ${threads_flags[$threadID]}
+				# wait until the handler reset the flag
+				while :; do
+					read tflag < ${threads_flags[$threadID]}
+					[[ "$tflag" == "$TRUN" ]] && thread_safe_echo -e "\r${White}Thread${Blue}${threadID}${Reset} restarted" && break
+					sleep 0.1
+				done
             else
                 fsize_temp=$(du -b "${ffname}.tmp" |awk '{ print $1 }')
                 foffset=$[$foffset+$fsize_temp]  # -1 because the file starts from byte 0
                 cat "${ffname}.tmp" >> "$ffname" # copy the temporary data in the file for the current chunk
                 if [[ $foffset -lt $fstop ]]; then
                     # the connection has been dropped
-                    echo -e "${White}Thread${Blue}$threadID ${Reset}the connection has been dropped. Recovery connection"
+                    thread_safe_echo -e "${White}Thread${Blue}$threadID ${Reset}the connection has been dropped. Recovery connection"
                     fdropcflag=1  # the temp file can't be renamed because incomplete
                 fi
             fi
@@ -526,6 +532,9 @@ function StartThread
         # temp. file was alredy copied in ffname
         rm -f "${ffname}.tmp"
     fi
+    
+    # job is done. Send a message to the handler
+	send_message $threadID
 }
 
 #______________________________________________________________________________
