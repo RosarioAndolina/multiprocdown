@@ -196,7 +196,7 @@ send_message()
 	# thread safe message sending
 	(
 		flock -n ${msg_lock_fd}
-		echo "$from" > ${handler_file}      # the message is the thread_id itself
+		echo "$from" > ${handler_fifo}      # the message is the thread_id itself
 	){msg_lock_fd}>> ${msg_lock}
 }
 
@@ -210,15 +210,14 @@ messages_handler()
 	local j=0
 	# wait for messages while there are tasks
 	while [[ $num_working_tasks -gt 0 ]]; do
-		read tid < "${handler_file}"
+		read tid < "${handler_fifo}"
 		if [[ $tid ]]; then                   # a thread has finished
-			echo -n "" > "${handler_file}"      # reset the handler file
 			[[ $verbose == true ]] && thread_safe_echo "handler: thread#$tid has finished"
 			num_working_tasks=$[$num_working_tasks-1] # decrement by one
 			# check the threads flags. If one of them is TINT reset to TRUN and break
 			for (( j=0; j<$nthreads; j++ )); do
-				read tflag < ${threads_flags[$j]}
-				[[ "${tflag}" == "$TINT" ]] && echo $TRUN > ${threads_flags[$j]} && break
+				read tflag < "${threads_flags[$j]}"
+				[[ "${tflag}" == "$TINT" ]] && echo "$TRUN" > "${threads_flags[$j]}" && break
 			done
 			continue # without sleeping
 		fi
@@ -376,8 +375,7 @@ function clean_up
         rm -f "${output}.part*"
     fi
     
-    exec {handler_fd}<&-              # close
-	rm -f $handler_file               # remove
+    rm -f $handler_fifo
 	exec {echo_lock_fd}<&-
 	rm -f $echo_lock
 	exec {msg_lock_fd}<&-
@@ -436,6 +434,7 @@ function RunThread
     trap "rm -f $flog; exit $KILLED_ERROR" INT TERM
     
     # init the flag
+    [[ ! -f "${threads_flags[$threadID]}" ]] && thread_safe_echo "${threads_flags[$threadID]} doesn't exist" && sleep 0.1 
     echo "$TRUN" > "${threads_flags[$threadID]}"
     
     if [[ $verbose == true ]]; then
@@ -479,6 +478,7 @@ function RunThread
         fi
     done
     # job is done. Send a message to the handler
+    thread_safe_echo "thread#${threadID} sending message to handler"
 	send_message $threadID
 }
 
@@ -884,10 +884,9 @@ for (( i=0; i<$nthreads; i++ )); do
 	exec {FD}<> "${threads_flags[$i]}"           # open i-th flag file rw mode
 done
 
-# messages handler file init
-handler_fd=300
-handler_file="/tmp/flags/handler"           # handler file
-exec {handler_fd}<> "$handler_file"         # open handler file rw mode
+# messages handler fifo init
+handler_fifo="/tmp/flags/handler"           # handler fifo
+mkfifo $handler_fifo                        # open handler fifo
 
 # messages lock file
 msg_lock="/tmp/lock/msg_lock"
