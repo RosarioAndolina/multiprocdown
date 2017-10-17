@@ -388,6 +388,7 @@ function get_chunks_rate
 {
     local i=0
     local sum=0
+    local token
     while read token; do
         sum=$[$sum+$token]
         [[ $sum -gt 100 ]] && break   # chunks are considered good while sum is less than 100
@@ -413,18 +414,20 @@ function RunThread
     local flog=$TEMPDIR/${PROGNAME}T${threadID}.log   # curl log file, needed for checking errors
     local fdata=$TEMPDIR/thread${threadID}.data     # file of data to plot threads statistics
     local ddargs="oflag=seek_bytes conv=notrunc,sparse status=progress"
-    #local proxy=""
     local bytes_copied=0
+    local tflag
     
     trap "rm -f $flog; exit $KILLED_ERROR" INT TERM
-    # acquire lock to write messages on stdout
+    
+    # init the flag
+    echo $TRUN > ${threads_flags[$threadID]}
+    
     if [[ $verbose == true ]]; then
-    (
-        flock -n ${lock_fd}
-        printf "\rThread${Blue}%d${Reset} %d - %d\n" $threadID $fstart $fstop
-    ){lock_fd}>>$lockfile
+		thread_safe_echo -e -n "\rThread${Blue}${threadID}${Reset} ${fstart} - ${fstop}\n"
     fi
+    
     [[ -e $fdata ]] && rm $fdata
+    
     while [[ $foffset -lt $fstop ]]; do
         # download (fstop-foffset)
         # if the foffset byte is equal to the fstop byte then the thread's chunk
@@ -437,33 +440,30 @@ function RunThread
         
         # if the connection drop continue the download updating the offset
         bytes_copied=$(tail -n1 $fdata | stdbuf -oL awk '/bytes/ { print $1 }')
+        
+        # update the offset
         foffset=$[$fstart+$bytes_copied-1]
+        
+        # check for errors in flog
         grep -q error $flog
         if [[ $? -eq 0 ]]; then
             # the server has sent an error message
             # maybe it only accepts a limited number of connections from the same IP address
-            (
-                flock -n ${lock_fd}
-                printf "\r${White}Thread${Blue}%d${Reset} interrupted by the server. Will restart ASAP\n" $threadID
-            ){lock_fd}>>$lockfile
-            sleep 0.5
-            # counts the number of active connections
-            local active_conn=$(pgrep -c curl)
-            while [[ $(pgrep -c curl) -ge $active_conn ]]; do
-                sleep 1  # sleep until one or more active connections have finished their work
-            done
-            (
-                flock -n ${lock_fd}
-                printf "\r${White}Thread${Blue}%d ${Reset}restarted\n" $threadID
-            ){lock_fd}>>$lockfile
+            thread_safe_echo -e "\r${White}Thread${Blue}${threadID}${Reset} interrupted by the server. Will restart ASAP"
+            # set the flag to TINT
+			echo $TINT > ${threads_flags[$threadID]}
+			# wait until the handler reset the flag
+			while :; do
+				read tflag < ${threads_flags[$threadID]}
+				[[ "$tflag" == "$TRUN" ]] && thread_safe_echo -e "\r${White}Thread${Blue}${threadID}${Reset} restarted" && break
+				sleep 0.1
+			done
         elif [[ $foffset -lt $fstop ]]; then
-            (
-                flock -n ${lock_fd}
-                printf "\r${White}Thread${Blue}%d ${Reset}connection dropped and restarted\n" $threadID
-            ){lock_fd}>>$lockfile
+			thread_safe_echo -e "\r${White}Thread${Blue}${threadID}${Reset} connection dropped and restarted"
         fi
     done
-        
+    # job is done. Send a message to the handler
+	send_message $threadID
 }
 
 #______________________________________________________________________________
