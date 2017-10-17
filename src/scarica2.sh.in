@@ -212,7 +212,7 @@ messages_handler()
 	while [[ $num_working_tasks -gt 0 ]]; do
 		read tid < "${handler_fifo}"
 		if [[ $tid ]]; then                   # a thread has finished
-			[[ $verbose == true ]] && thread_safe_echo "handler: thread#$tid has finished"
+			[[ $verbose == true ]] && thread_safe_echo -e "\nhandler: thread#$tid has finished"
 			num_working_tasks=$[$num_working_tasks-1] # decrement by one
 			# check the threads flags. If one of them is TINT reset to TRUN and break
 			for (( j=0; j<$nthreads; j++ )); do
@@ -434,7 +434,7 @@ function RunThread
     trap "rm -f $flog; exit $KILLED_ERROR" INT TERM
     
     # init the flag
-    [[ ! -f "${threads_flags[$threadID]}" ]] && thread_safe_echo "${threads_flags[$threadID]} doesn't exist" && sleep 0.1 
+    [[ ! -f "${threads_flags[$threadID]}" ]] && thread_safe_echo -e "\n${threads_flags[$threadID]} doesn't exist" && sleep 0.1 
     echo "$TRUN" > "${threads_flags[$threadID]}"
     
     if [[ $verbose == true ]]; then
@@ -464,21 +464,21 @@ function RunThread
         if [[ $? -eq 0 ]]; then
             # the server has sent an error message
             # maybe it only accepts a limited number of connections from the same IP address
-            thread_safe_echo -e "\r${White}Thread${Blue}${threadID}${Reset} interrupted by the server. Will restart ASAP"
+            thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} interrupted by the server. Will restart ASAP"
             # set the flag to TINT
 			echo "$TINT" > "${threads_flags[$threadID]}"
 			# wait until the handler reset the flag
 			while :; do
 				read tflag < "${threads_flags[$threadID]}"
-				[[ "$tflag" == "$TRUN" ]] && thread_safe_echo -e "\r${White}Thread${Blue}${threadID}${Reset} restarted" && break
+				[[ "$tflag" == "$TRUN" ]] && thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} restarted" && break
 				sleep 0.1
 			done
         elif [[ $foffset -lt $fstop ]]; then
-			thread_safe_echo -e "\r${White}Thread${Blue}${threadID}${Reset} connection dropped and restarted"
+			thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} connection dropped and restarted"
         fi
     done
     # job is done. Send a message to the handler
-    thread_safe_echo "thread#${threadID} sending message to handler"
+    thread_safe_echo -e "\nthread#${threadID} sending message to handler"
 	send_message $threadID
 }
 
@@ -521,13 +521,13 @@ function StartThread
             if [ $? -eq 0 -a "$(file \"${ffname}.tmp\" |awk '{ print $2 }')" == "HTML" ]; then
                 # the server has sent an error message
                 # maybe it only accepts a limited number of connections from the same IP address
-                thread_safe_echo -e "${White}Thread${Blue}$threadID ${Reset}interrupted by the server. Will restart ASAP"
+                thread_safe_echo -e "\n${White}Thread${Blue}$threadID ${Reset}interrupted by the server. Will restart ASAP"
                 # set the flag to TINT
 				echo "$TINT" > "${threads_flags[$threadID]}"
 				# wait until the handler reset the flag
 				while :; do
 					read tflag < "${threads_flags[$threadID]}"
-					[[ "$tflag" == "$TRUN" ]] && thread_safe_echo -e "\r${White}Thread${Blue}${threadID}${Reset} restarted" && break
+					[[ "$tflag" == "$TRUN" ]] && thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} restarted" && break
 					sleep 0.1
 				done
             else
@@ -536,7 +536,7 @@ function StartThread
                 cat "${ffname}.tmp" >> "$ffname" # copy the temporary data in the file for the current chunk
                 if [[ $foffset -lt $fstop ]]; then
                     # the connection has been dropped
-                    thread_safe_echo -e "${White}Thread${Blue}$threadID ${Reset}the connection has been dropped. Recovery connection"
+                    thread_safe_echo -e "\n${White}Thread${Blue}$threadID ${Reset}the connection has been dropped. Recovery connection"
                     fdropcflag=1  # the temp file can't be renamed because incomplete
                 fi
             fi
@@ -1133,7 +1133,7 @@ time_elapsed=$[$SECONDS-$time_elapsed]
 
 # download completed
 Play $NOTIFY_SOUND &
-printf "\n Download completed\n"
+printf "\nDownload completed\n"
 
 [[ $verbose == true && $usedd == false ]] && ls -lh |grep "$output" | awk '{ print "\033[1;32m"$9"  \033[1;34m"$5"\033[00m" }'
 
