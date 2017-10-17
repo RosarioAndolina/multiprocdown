@@ -33,19 +33,23 @@ readonly GP_ERROR=11             # gnuplot not found
 readonly TOR_ERROR=12            # connection through Tor isn't possible
 
 # tor flags
-readonly TOR_INST_NOTRUN=1        # tor is installed but service not running
+readonly TOR_INST_NOTRUN=1       # tor is installed but service not running
 readonly TOR_INST_RUN=2          # tor is installed and service running
 readonly TOR_NOTINST=3           # tor is't installed
 torflag=0
 
+readonly TINT=1                  # thread interrupted flag
+readonly TRUN=0                  # thread runnig flag
+
 readonly PROGNAME="@PACKAGE@"
 readonly VERSION="@VERSION@"
+
 INSTALL_DIR=$(dirname ${BASH_SOURCE[0]})
 while [[ "${INSTALL_DIR##*/}" != "usr" ]]; do
 	INSTALL_DIR=${INSTALL_DIR%/*}
 done
+
 readonly SOUND_DIR=${INSTALL_DIR}/share/${PROGNAME}
-echo -e "\n\n********* SOUND_DIR = ${SOUND_DIR} *************"
 readonly ERROR_SOUND="${SOUND_DIR}/breaking-some-glass.ogg"
 readonly NOTIFY_SOUND="${SOUND_DIR}/demonstrative.ogg"
 readonly TEMPDIR=/tmp/$PROGNAME
@@ -65,7 +69,7 @@ pplot=$TEMPDIR/progress.data
 gplt_script=$TEMPDIR/gplt_script.plt
 [[ -e $gplt_script ]] && rm $gplt_script
 
-alias cvlc="cvlc -q --no-loop --play-and-exit"
+CVLC="cvlc -q --no-loop --play-and-exit"
 
 url=""
 declare -i nthreads=10         # threads number
@@ -89,8 +93,9 @@ snapfileL=""                   # snapshot file to load
 loadedst=()                    # loaded threads snapshot start and stop
 usetor=false                   # connect through Tor
 proxy=""
-lock_fd=200                    # lock-file file descriptor
 snap_fd=3                      # snapshot file descriptor
+threads_flags=()               # threads flag list
+fd_init=250                    # initial file descriptor for threads flags
 
 #_______________________________________________________________________
 function print_usage
@@ -170,6 +175,55 @@ function print_usage
 }
 
 #___________________________________________________________________________
+# thread safe echo func
+thread_safe_echo()
+{
+	(
+		flock -n ${echo_lock_fd}
+		echo "$@"
+	){echo_lock_fd}>> ${echo_lock}
+}
+
+#___________________________________________________________________________
+# threads sends messages to the handler only when they complete the job
+send_message()
+{
+	local from=$1                           # thread_id who send the message
+	# thread safe message sending
+	(
+		flock -n ${msg_lock_fd}
+		echo "$from" > ${handler_file}      # the message is the thread_id itself
+	){msg_lock_fd}>> ${msg_lock}
+}
+
+#___________________________________________________________________________
+# handle threads message and start interrupted threads
+messages_handler()
+{
+	local num_working_tasks=$1
+	local tid                                     # thread id
+	local tflag                                   # thread flag
+	local j=0
+	# wait for messages while there are tasks
+	while [[ $num_working_tasks -gt 0 ]]; do
+		read tid < ${handler_file}
+		if [[ $tid ]]; then                   # a thread has finished
+			echo -n "" > ${handler_file}      # reset the handler file
+			thread_safe_echo "handler: thread#$tid has finished"
+			num_working_tasks=$[$num_working_tasks-1] # decrement by one
+			# check the threads flags. If one of them is TINT reset to TRUN and break
+			for (( j=0; j<$nthreads; j++ )); do
+				read tflag < ${threads_flags[$j]}
+				[[ "${tflag}" == "$TINT" ]] && echo $TRUN > ${threads_flags[$j]} && break
+			done
+			continue # without sleeping
+		fi
+		sleep 0.1
+	done
+	stdbuf -oL echo "-- All threads has finished"
+}
+
+#___________________________________________________________________________
 # print download duration in human readable format
 function human_time
 {
@@ -193,7 +247,7 @@ function human_time
 # play error or notification sounds
 function Play
 {
-    local players=(paplay cvlc mplayer)
+    local players=(paplay "$CVLC" mplayer)
     for p in $players; do
         which "$p" &> /dev/null && "$p" "$1" &> /dev/null && break
     done
@@ -312,9 +366,20 @@ function clean_up
         rm -f "${output}.part*"
     fi
     
-    exec {lock_fd}<&-
+    exec {handler_fd}<&-
+	rm -f $handler_file
+	exec {echo_lock_fd}<&-
+	rm -f $echo_lock
+	exec {msg_lock_fd}<&-
+	rm -f $msg_lock
+	
+	for (( i=0; i<$nthreads; i++ )); do
+		FD=$[$fd_init+$i]
+		exec {FD}<&-
+		rm -f ${threads_flags[$i]}
+	done
+    
     [[ $loadsnap == true ]] && exec {snap_fd}<&-
-    rm -f $lockfile
     exit_error $KILLED_ERROR $1
 }
 
@@ -579,11 +644,35 @@ function touch_output
 # print usage and exit
 [[ $# -eq 0 ]] && exit_error $USAGE
 
-#check_tor
+[[ "$verbose" == "true" ]] && echo -e "\n\n********* SOUND_DIR = ${SOUND_DIR} *************"
 
+# flags directory
+mkdir -p /tmp/flags
+
+# locks directory
 mkdir -p /tmp/lock
-lockfile="/tmp/lock/${PROGNAME}$$.lock"
-exec {lock_fd}>$lockfile
+
+# open flag files rw mode
+for (( i=0; i<$nthreads; i++ )); do
+	FD=$[$fd_init+$i]                            # i-th flag file descriptor
+	threads_flags[$i]="/tmp/flags/thread$i"      # populate flag list
+	exec {FD}<> "${threads_flags[$i]}"           # open i-th flag file rw mode
+done
+
+# messages handler file init
+handler_fd=300
+handler_file="/tmp/flags/handler"           # handler file
+exec {handler_fd}<> "$handler_file"         # open handler file rw mode
+
+# messages lock file
+msg_lock="/tmp/lock/msg_lock"
+msg_lock_fd=301
+exec {msg_lock_fd}> ${msg_lock}
+
+# echo lock file
+echo_lock="/tmp/lock/echo_lock"
+echo_lock_fd=302
+exec {echo_lock_fd}> ${echo_lock}
 
 # parse options
 while [[ $# -gt 0 ]]; do
@@ -1023,14 +1112,6 @@ fi
 
 echo "Download rate: $down_rate KB/s in $(human_time $time_elapsed)"
 
-#if [[ $time_elapsed -gt 60 && $time_enlapsed != 0 ]]; then
-    #echo "Download rate: $[$content_length/($time_elapsed*1024)]KB/s in $[$time_elapsed/60]m $[$time_elapsed%60]s"
-#else
-    #echo "Download rate: $[$content_length/($time_elapsed*1024)]KB/s in ${time_elapsed}s"
-#fi
-
-exec {lock_fd}<&-   # close the lock file
-
 if [[ $checksum != "" ]]; then
     printf "\nchecking %s...\n" $checksum
     if [[ $md5 != "" ]]; then
@@ -1039,5 +1120,6 @@ if [[ $checksum != "" ]]; then
         [[ $($checksum "$output" |awk '{ print $1 }') == $sha1 ]] && printf "${Green}*****OK*****$Reset\n" || printf "${Red}*****NO*****$Reset\n"
     fi
 fi
-rm $lockfile
+
+clean_up
 echo
