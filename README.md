@@ -30,27 +30,33 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 ### installation:
 
-```bash
-cmake -DCMAKE_INSTALL_PREFIX=<your_build_directory>
-make && make install
-```
-	
-the default cmake install prefix is /usr/local, if you like to
-install in your own personal directory please use cmake.
-If you'll use `make DESTDIR=<your_build_directory> install`, multiprocdow
-will fail while loocking for audio files needed for audio support
-for example:
+**Multiprocdown** can be installed using cmake in the usual way
 
 ```bash
-your_build_dir=${HOME}/multiprocdown/usr
-cmake -DCMAKE_INSTALL_PREFIX="${you_build_dir}"
+cmake
 make && make install
+```
+The defalud cmake install prefix is `/usr/local` but you can chose another one. For example:
+
+```bash
+cmake -DCMAKE_INSTALL_PREFIX="/usr"
+make && make install
+
+# or
+
+cmake -DCMAKE_INSTALL_PREFIX=<you-build-dir>
+make && make install
+
+# or
+
+cmake -DCMAKE_INSTALL_PREFIX="/usr"
+make && make DESTDIR=<you-build-dir> install
 ```
 
 ### Usage
 
 ```bash
-multiprocdown -u URL | --url[=]URL [OPTIONS]...
+multiprocdown -u URL | -l SNAP_FILE [OPTIONS]...
 ```
 
 **multiprocdown** is a multiprocess download utility very useful for
@@ -80,13 +86,13 @@ load a saved snapshot to exhume the download
 
 **-n**, **--nthreads**[=]N
 
-[10] the number of threads used for parallel download
+[10] the number of threads used for parallel download. Ignored with -l option.
 
 ---
 
 **-o**, **--output**[=]F_OUT
 
-the output file name
+the output file name. Ignored with -l option
 
 ---
 
@@ -101,6 +107,8 @@ print more info on stdout
 use `dd` to write the chunks relating to each thread on the same file, 
 in this way, while downloading a video
 you can see a preview (see **-f**,**--first** option)
+
+Ignored with -l option.
 
 ---
 
@@ -118,12 +126,13 @@ calculates the sha1sum of the output file and compares with VALUE
 **-g**, **--enable-graph**
 
 enables graphic support showing a graph with the progress of each tread.
+Ignored with -l option.
 
 ---
 
 **-f**, **--first**[[=]FORMAT]
-download first the initial part of the file and then the rest, according to the FORMAT. `dd` is used by default
-
+download first the initial part of the file and then the rest, according to the FORMAT. `dd` is used by default.
+Ignored with -l option.
 ---
 
 **-s**, **--save-snapshot**[[=]SNAP_FILE]
