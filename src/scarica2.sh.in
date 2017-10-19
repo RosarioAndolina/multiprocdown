@@ -499,9 +499,10 @@ function StartThread
     local fdropcflag=0                  # flag for dropped connection
     local ffname="${output}.part${threadID}"
     local tflag
+    local flagid=$[$threadID-1]
     
     # init the flag
-    echo "$TRUN" > "${threads_flags[$threadID]}" &> /dev/null
+    echo "$TRUN" > "${threads_flags[$flagid]}"
     
     if [[ $loadsnap == true ]]; then
         fdropcflag=1
@@ -524,10 +525,10 @@ function StartThread
                 # maybe it only accepts a limited number of connections from the same IP address
                 thread_safe_echo -e "\n${White}Thread${Blue}$threadID ${Reset}interrupted by the server. Will restart ASAP"
                 # set the flag to TINT
-				echo "$TINT" > "${threads_flags[$threadID]}"
+				echo "$TINT" > "${threads_flags[$flagid]}"
 				# wait until the handler reset the flag
 				while :; do
-					read tflag < "${threads_flags[$threadID]}"
+					read tflag < "${threads_flags[$flagid]}"
 					[[ "$tflag" == "$TRUN" ]] && thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} restarted" && break
 					sleep 0.1
 				done
