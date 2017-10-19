@@ -210,17 +210,18 @@ messages_handler()
 	local j=0
 	# wait for messages while there are tasks
 	while [[ $num_working_tasks -gt 0 ]]; do
-		read tid < "${handler_fifo}"
-		if [[ $tid ]]; then                   # a thread has finished
-			[[ $verbose == true ]] && thread_safe_echo -e "\nhandler: thread#$tid has finished"
-			num_working_tasks=$[$num_working_tasks-1] # decrement by one
-			# check the threads flags. If one of them is TINT reset to TRUN and break
-			for (( j=0; j<$nthreads; j++ )); do
-				read tflag < "${threads_flags[$j]}"
-				[[ "${tflag}" == "$TINT" ]] && echo "$TRUN" > "${threads_flags[$j]}" && break
-			done
-			continue # without sleeping
+		tid=
+		if read -t 1 tid < "${handler_fifo}" &> /dev/null; then
+			if [[ $tid ]]; then                   # a thread has finished
+				[[ $verbose == true ]] && thread_safe_echo -e "\nhandler: thread#$tid has finished"
+				num_working_tasks=$[$num_working_tasks-1] # decrement by one
+			fi
 		fi
+		# check the threads flags. If one of them is TINT reset to TRUN and break
+		for (( j=0; j<$nthreads; j++ )); do
+			read tflag < "${threads_flags[$j]}"
+			[[ "${tflag}" == "$TINT" ]] && echo "$TRUN" > "${threads_flags[$j]}" && break
+		done			
 		sleep 0.1
 	done
 	
