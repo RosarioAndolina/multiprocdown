@@ -133,6 +133,7 @@ Ignored with -l option.
 **-f**, **--first**[[=]FORMAT]
 download first the initial part of the file and then the rest, according to the FORMAT. `dd` is used by default.
 Ignored with -l option.
+
 ---
 
 **-s**, **--save-snapshot**[[=]SNAP_FILE]
