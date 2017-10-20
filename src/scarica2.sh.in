@@ -229,6 +229,7 @@ messages_handler()
 						read tflag < "${threads_flags[$j]}"
 						[[ "${tflag}" == "$TINT" ]] && echo "$TRUN" > "${threads_flags[$j]}" && break
 					done
+					echo "BYE" > "${threads_flags[$[$id-1]]}"
 				fi
 			done
 		fi
@@ -528,8 +529,13 @@ function RunThread
         fi
     done
     # job is done. Send a message to the handler
-    [[ $verbose == true ]] && thread_safe_echo -e "\nthread#${threadID} sending message to handler"
-	send_message $threadID
+    local byemsg
+    while [[ "$byemsg" != "BYE" ]]; do
+		[[ $verbose == true ]] && thread_safe_echo -e "\nthread#${threadID} sending message to handler"
+		send_message $threadID
+		sleep 0.1
+		read byemsg < "${threads_flags[$flagid]}"
+	done
 }
 
 #______________________________________________________________________________
@@ -611,7 +617,13 @@ function StartThread
     fi
     
     # job is done. Send a message to the handler
-	send_message $threadID
+    local byemsg=""
+	while [[ "$byemsg" != "BYE" ]]; do
+		[[ $verbose == true ]] && thread_safe_echo -e "\nthread#${threadID} sending message to handler"
+		send_message $threadID
+		sleep 0.1
+		read byemsg < "${threads_flags[$flagid]}"
+	done
 }
 
 #______________________________________________________________________________
@@ -1141,7 +1153,7 @@ fi
 time_elapsed=$SECONDS
 # chunks loop
 while [[ $cc -lt $nchunks ]]; do
-    [[ $verbose == true ]] && printf "downloading chunk %d\n" $cc
+    [[ $verbose == true ]] && printf "\ndownloading chunk %d\n" $cc
     [[ $usedd == false ]] && file_out=()   # a list with the partial output file names (old algo)
     [[ $savesnap == true ]] && snapstart=$chunkstart
     division=$[${chunksize[$cc]} / $nthreads]     # the single thread chunk
