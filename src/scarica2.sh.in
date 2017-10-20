@@ -210,7 +210,9 @@ messages_handler()
 	local tflag                                   # thread flag
 	local j=0
 	local num_tint=0
+	local prev_num_wt=$num_working_tasks
 	local num_attempts=1
+	local max_num_attempts=5
 	echo 0 > "$handler_flag"
 	# wait for messages while there are tasks
 	while [[ $num_working_tasks -gt 0 ]]; do
@@ -218,6 +220,7 @@ messages_handler()
 		if read -t 1 tid < "${handler_fifo}" &> /dev/null; then
 			if [[ "$tid" != "error" ]]; then                   # a thread has finished
 				[[ $verbose == true ]] && thread_safe_echo -e "\nhandler: thread#$tid has finished"
+				prev_num_wt=$num_working_tasks
 				num_working_tasks=$[$num_working_tasks-1] # decrement by one
 				# check the threads flags. If one of them is TINT reset to TRUN and break
 				for (( j=0; j<$nthreads; j++ )); do
@@ -226,7 +229,7 @@ messages_handler()
 				done
 			fi
 		fi
-		# check if there are threads running
+		# check if all threads are interrupted
 		num_tint=0
 		#thread_safe_echo "handler: checking num_tint"
 		for (( j=0; j<$nthreads; j++ )); do
@@ -235,8 +238,8 @@ messages_handler()
 		done
 		if [[ $num_tint == $num_working_tasks ]]; then
 			thread_safe_echo -e "\n${W}Warning:${Reset} all threads has been interrupted by the server"
-			[[ $num_attempts == 1 ]] && thread_safe_echo "\nI'll try three attempts"
-			if [[ $num_attempts -le 3 ]]; then
+			if [[ $prev_num_wt -gt $num_working_tasks && $num_attempts -lt $max_num_attempts ]]; then
+				thread_safe_echo -e "\nI'll try again"
 				echo -e "${W}handler:${Reset} attempt no $num_attempts"
 				for (( j=0; j<$nthreads; j++ )); do
 					read tflag < "${threads_flags[$j]}"
