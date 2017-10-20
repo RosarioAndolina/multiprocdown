@@ -40,6 +40,7 @@ torflag=0
 
 readonly TINT=1                  # thread interrupted flag
 readonly TRUN=0                  # thread runnig flag
+readonly TEXIT=2                 # thread exit if it's setted
 readonly BRUN=0                  # progress bar running flag
 readonly BSTOP=1                 # progress bar stop flag
 readonly GRUN=0                  # progress graph run flag
@@ -192,11 +193,11 @@ thread_safe_echo()
 # threads sends messages to the handler only when they complete the job
 send_message()
 {
-	local from=$1                           # thread_id who send the message
+	local msg=$1                       # msg = thread id if thread job is done, error otherwise
 	# thread safe message sending
 	(
 		flock -n ${msg_lock_fd}
-		echo "$from" > ${handler_fifo}      # the message is the thread_id itself
+		echo "$msg" > ${handler_fifo}      # the message is the thread_id itself
 	){msg_lock_fd}>> ${msg_lock}
 }
 
@@ -208,20 +209,48 @@ messages_handler()
 	local tid                                     # thread id
 	local tflag                                   # thread flag
 	local j=0
+	local num_tint=0
+	local num_attempts=1
+	echo 0 > "$handler_flag"
 	# wait for messages while there are tasks
 	while [[ $num_working_tasks -gt 0 ]]; do
 		tid=
 		if read -t 1 tid < "${handler_fifo}" &> /dev/null; then
-			if [[ $tid ]]; then                   # a thread has finished
+			if [[ "$tid" != "error" ]]; then                   # a thread has finished
 				[[ $verbose == true ]] && thread_safe_echo -e "\nhandler: thread#$tid has finished"
 				num_working_tasks=$[$num_working_tasks-1] # decrement by one
 				# check the threads flags. If one of them is TINT reset to TRUN and break
 				for (( j=0; j<$nthreads; j++ )); do
 					read tflag < "${threads_flags[$j]}"
 					[[ "${tflag}" == "$TINT" ]] && echo "$TRUN" > "${threads_flags[$j]}" && break
-		done	
+				done
 			fi
-		fi		
+		fi
+		# check if there are threads running
+		num_tint=0
+		#thread_safe_echo "handler: checking num_tint"
+		for (( j=0; j<$nthreads; j++ )); do
+			read tflag < "${threads_flags[$j]}"
+			[[ "$tflag" == "$TINT" ]] && num_tint=$[$num_tint+1]
+		done
+		if [[ $num_tint == $num_working_tasks ]]; then
+			thread_safe_echo -e "\n${W}Warning:${Reset} all threads has been interrupted by the server"
+			[[ $num_attempts == 1 ]] && thread_safe_echo "\nI'll try three attempts"
+			if [[ $num_attempts -le 3 ]]; then
+				echo -e "${W}handler:${Reset} attempt no $num_attempts"
+				for (( j=0; j<$nthreads; j++ )); do
+					read tflag < "${threads_flags[$j]}"
+					[[ "${tflag}" == "$TINT" ]] && echo "$TRUN" > "${threads_flags[$j]}"
+				done
+				num_attempts=$[$num_attempts+1]
+			else
+				for (( j=0; j<$nthreads; j++ )); do
+					echo "$TEXIT" > "${threads_flags[$j]}"
+				done
+				echo 1 > "$handler_flag"
+				break
+			fi
+		fi
 		sleep 0.1
 	done
 	
@@ -231,7 +260,9 @@ messages_handler()
 	# set the progress graph flag to GSTOP
 	[[ $graph == true ]] && echo "$GSTOP" > "$pgraph_flag"
 	
-	stdbuf -oL echo "-- All threads has finished"
+	local hf
+	read hf < "$handler_flag"
+	[[ $hf == 0 ]] && stdbuf -oL echo "-- All threads has finished" || stdbuf -oL echo "handler exiting 1 ... "
 }
 
 #___________________________________________________________________________
@@ -376,6 +407,8 @@ function clean_up
         rm -f "${output}.part*"
     fi
     
+    exec {handler_flag_fd}<&-
+    rm -f $handler_flag
     rm -f $handler_fifo
 	exec {echo_lock_fd}<&-
 	rm -f $echo_lock
@@ -468,10 +501,20 @@ function RunThread
             thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} interrupted by the server. Will restart ASAP"
             # set the flag to TINT
 			echo "$TINT" > "${threads_flags[$flagid]}"
+			(
+				flock -n ${msg_lock_fd}
+				send_message "error"
+			){msg_lock_fd}>> "$msg_lock"
 			# wait until the handler reset the flag
 			while :; do
 				read tflag < "${threads_flags[$flagid]}"
-				[[ "$tflag" == "$TRUN" ]] && thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} restarted" && break
+				if [[ $tflag == $TRUN ]]; then
+					thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} restarted"
+					break
+				elif [[ $tflag == $TEXIT ]]; then
+					thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} exiting ..."
+					return 1
+				fi
 				sleep 0.1
 			done
         elif [[ $foffset -lt $fstop ]]; then
@@ -480,7 +523,10 @@ function RunThread
     done
     # job is done. Send a message to the handler
     #thread_safe_echo -e "\nthread#${threadID} sending message to handler"
-	send_message $threadID
+    (
+		flock -n ${msg_lock_fd}
+		send_message $threadID
+	){msg_lock_fd}>> "$msg_lock"
 }
 
 #______________________________________________________________________________
@@ -526,10 +572,20 @@ function StartThread
                 thread_safe_echo -e "\n${White}Thread${Blue}$threadID ${Reset}interrupted by the server. Will restart ASAP"
                 # set the flag to TINT
 				echo "$TINT" > "${threads_flags[$flagid]}"
+				(
+				flock -n ${msg_lock_fd}
+					send_message "error"
+				){msg_lock_fd}>> "$msg_lock"
 				# wait until the handler reset the flag
 				while :; do
 					read tflag < "${threads_flags[$flagid]}"
-					[[ "$tflag" == "$TRUN" ]] && thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} restarted" && break
+					if [[ $tflag == $TRUN ]]; then
+						thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} restarted"
+						break
+					elif [[ $tflag == $TEXIT ]]; then
+						thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} exiting ..."
+						return 1
+					fi
 					sleep 0.1
 				done
             else
@@ -552,7 +608,10 @@ function StartThread
     fi
     
     # job is done. Send a message to the handler
-	send_message $threadID
+	(
+		flock -n ${msg_lock_fd}
+		send_message $threadID
+	){msg_lock_fd}>> "$msg_lock"
 }
 
 #______________________________________________________________________________
@@ -886,9 +945,15 @@ for (( i=0; i<$nthreads; i++ )); do
 	exec {FD}<> "${threads_flags[$i]}"           # open i-th flag file rw mode
 done
 
+# messages handler exitflag
+handler_flag_fd=300
+handler_flag="/tmp/flags/handler_flag"
+exec {handler_flag_fd}<> "$handler_flag"
+echo "0" > "handler_flag"
+
 # messages handler fifo init
-handler_fifo="/tmp/flags/handler"           # handler fifo
-mkfifo $handler_fifo                        # open handler fifo
+handler_fifo="/tmp/flags/handler"                     # handler fifo
+[[ ! -p $handler_fifo ]] && mkfifo $handler_fifo      # open handler fifo
 
 # messages lock file
 msg_lock="/tmp/lock/msg_lock"
@@ -1129,52 +1194,57 @@ while [[ $cc -lt $nchunks ]]; do
     fi
 
     wait  # wait and join the threads when finished
+    
+    read hf < "$handler_flag"
+    [[ $hf != 0 ]] && break
 done
 echo
 time_elapsed=$[$SECONDS-$time_elapsed]
 
-# download completed
-Play $NOTIFY_SOUND &
-printf "\nDownload completed\n"
-
-[[ $verbose == true && $usedd == false ]] && ls -lh |grep "$output" | awk '{ print "\033[1;32m"$9"  \033[1;34m"$5"\033[00m" }'
-
-if [[ $usedd == false ]]; then
-    # join all the chunks in one file
-    [[ $verbose == true ]] && printf "All the chunks will be joined together\n\n"
-    for f in ${file_out[@]}; do
-        cat "$f" >> "$output"
-        [[ $verbose == true ]] && printf "${Red}removing the file %s$Reset\n" "$f"
-        rm "$f"
-    done
-else
-    rm $TEMPDIR/${PROGNAME}*.log
-    rm $TEMPDIR/thread*.data
-fi
-[[ $loadsnap == true && $usedd == false ]] && rm "$snapfileL"
-actual_fsize=$(du -b "$output" |awk '{ print $1 }')
-if [[ $actual_fsize != $content_length ]]; then
-    printf "Ooooops something went wrong\nfile size mismatch\n\n"
-elif [[ $loadsnap == true ]]; then
-    rm -f "$snapfileL"
-fi
-
-# calculate download rate
-if [[ $loadsnap == true ]]; then
-    down_rate=$[$content_left/($time_elapsed*1024)]
-else
-    down_rate=$[$content_length/($time_elapsed*1024)]
-fi
-
-echo "Download rate: $down_rate KB/s in $(human_time $time_elapsed)"
-
-if [[ $checksum != "" ]]; then
-    printf "\nchecking %s...\n" $checksum
-    if [[ $md5 != "" ]]; then
-        [[ $($checksum "$output" |awk '{ print $1 }') == $md5 ]] && printf "${Green}*****OK*****$Reset\n" || printf "${Red}*****NO*****$Reset\n"
-    elif [[ $sha1 != "" ]]; then
-        [[ $($checksum "$output" |awk '{ print $1 }') == $sha1 ]] && printf "${Green}*****OK*****$Reset\n" || printf "${Red}*****NO*****$Reset\n"
-    fi
+if [[ $hf == 0 ]]; then
+	# download completed
+	Play $NOTIFY_SOUND &
+	printf "\nDownload completed\n"
+	
+	[[ $verbose == true && $usedd == false ]] && ls -lh |grep "$output" | awk '{ print "\033[1;32m"$9"  \033[1;34m"$5"\033[00m" }'
+	
+	if [[ $usedd == false ]]; then
+	    # join all the chunks in one file
+	    [[ $verbose == true ]] && printf "All the chunks will be joined together\n\n"
+	    for f in ${file_out[@]}; do
+	        cat "$f" >> "$output"
+	        [[ $verbose == true ]] && printf "${Red}removing the file %s$Reset\n" "$f"
+	        rm "$f"
+	    done
+	else
+	    rm $TEMPDIR/${PROGNAME}*.log
+	    rm $TEMPDIR/thread*.data
+	fi
+	[[ $loadsnap == true && $usedd == false ]] && rm "$snapfileL"
+	actual_fsize=$(du -b "$output" |awk '{ print $1 }')
+	if [[ $actual_fsize != $content_length ]]; then
+	    printf "Ooooops something went wrong\nfile size mismatch\n\n"
+	elif [[ $loadsnap == true ]]; then
+	    rm -f "$snapfileL"
+	fi
+	
+	# calculate download rate
+	if [[ $loadsnap == true ]]; then
+	    down_rate=$[$content_left/($time_elapsed*1024)]
+	else
+	    down_rate=$[$content_length/($time_elapsed*1024)]
+	fi
+	
+	echo "Download rate: $down_rate KB/s in $(human_time $time_elapsed)"
+	
+	if [[ $checksum != "" ]]; then
+	    printf "\nchecking %s...\n" $checksum
+	    if [[ $md5 != "" ]]; then
+	        [[ $($checksum "$output" |awk '{ print $1 }') == $md5 ]] && printf "${Green}*****OK*****$Reset\n" || printf "${Red}*****NO*****$Reset\n"
+	    elif [[ $sha1 != "" ]]; then
+	        [[ $($checksum "$output" |awk '{ print $1 }') == $sha1 ]] && printf "${Green}*****OK*****$Reset\n" || printf "${Red}*****NO*****$Reset\n"
+	    fi
+	fi
 fi
 
 clean_up
