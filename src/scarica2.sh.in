@@ -206,28 +206,31 @@ send_message()
 messages_handler()
 {
 	local num_working_tasks=$1
-	local tid                                     # thread id
+	local tid=()                                  # thread id
 	local tflag                                   # thread flag
 	local j=0
 	local num_tint=0
 	local prev_num_wt=$num_working_tasks
 	local num_attempts=1
 	local max_num_attempts=5
+	local id
 	echo 0 > "$handler_flag"
 	# wait for messages while there are tasks
 	while [[ $num_working_tasks -gt 0 ]]; do
 		tid=
-		if read -t 1 tid < "${handler_fifo}" &> /dev/null; then
-			if [[ "$tid" != "error" ]]; then                   # a thread has finished
-				[[ $verbose == true ]] && thread_safe_echo -e "\nhandler: thread#$tid has finished"
-				prev_num_wt=$num_working_tasks
-				num_working_tasks=$[$num_working_tasks-1] # decrement by one
-				# check the threads flags. If one of them is TINT reset to TRUN and break
-				for (( j=0; j<$nthreads; j++ )); do
-					read tflag < "${threads_flags[$j]}"
-					[[ "${tflag}" == "$TINT" ]] && echo "$TRUN" > "${threads_flags[$j]}" && break
-				done
-			fi
+		if read -t 1 -a tid < "${handler_fifo}" &> /dev/null; then
+			for id in ${tid[@]}; do
+				if [[ "$id" != "error" ]]; then                   # a thread has finished
+					[[ $verbose == true ]] && thread_safe_echo -e "\nhandler: thread#$id has finished"
+					prev_num_wt=$num_working_tasks
+					num_working_tasks=$[$num_working_tasks-1] # decrement by one
+					# check the threads flags. If one of them is TINT reset to TRUN and break
+					for (( j=0; j<$nthreads; j++ )); do
+						read tflag < "${threads_flags[$j]}"
+						[[ "${tflag}" == "$TINT" ]] && echo "$TRUN" > "${threads_flags[$j]}" && break
+					done
+				fi
+			done
 		fi
 		# check if all threads are interrupted
 		num_tint=0
@@ -236,7 +239,7 @@ messages_handler()
 			read tflag < "${threads_flags[$j]}"
 			[[ "$tflag" == "$TINT" ]] && num_tint=$[$num_tint+1]
 		done
-		if [[ $num_tint == $num_working_tasks ]]; then
+		if [[ $num_working_tasks != 0 && $num_tint == $num_working_tasks ]]; then
 			thread_safe_echo -e "\n${W}Warning:${Reset} all threads has been interrupted by the server"
 			if [[ $prev_num_wt -gt $num_working_tasks && $num_attempts -lt $max_num_attempts ]]; then
 				thread_safe_echo -e "\nI'll try again"
@@ -525,11 +528,8 @@ function RunThread
         fi
     done
     # job is done. Send a message to the handler
-    #thread_safe_echo -e "\nthread#${threadID} sending message to handler"
-    (
-		flock -n ${msg_lock_fd}
-		send_message $threadID
-	){msg_lock_fd}>> "$msg_lock"
+    [[ $verbose == true ]] && thread_safe_echo -e "\nthread#${threadID} sending message to handler"
+	send_message $threadID
 }
 
 #______________________________________________________________________________
@@ -611,10 +611,7 @@ function StartThread
     fi
     
     # job is done. Send a message to the handler
-	(
-		flock -n ${msg_lock_fd}
-		send_message $threadID
-	){msg_lock_fd}>> "$msg_lock"
+	send_message $threadID
 }
 
 #______________________________________________________________________________
