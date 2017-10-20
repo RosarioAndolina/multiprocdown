@@ -215,13 +215,13 @@ messages_handler()
 			if [[ $tid ]]; then                   # a thread has finished
 				[[ $verbose == true ]] && thread_safe_echo -e "\nhandler: thread#$tid has finished"
 				num_working_tasks=$[$num_working_tasks-1] # decrement by one
+				# check the threads flags. If one of them is TINT reset to TRUN and break
+				for (( j=0; j<$nthreads; j++ )); do
+					read tflag < "${threads_flags[$j]}"
+					[[ "${tflag}" == "$TINT" ]] && echo "$TRUN" > "${threads_flags[$j]}" && break
+		done	
 			fi
-		fi
-		# check the threads flags. If one of them is TINT reset to TRUN and break
-		for (( j=0; j<$nthreads; j++ )); do
-			read tflag < "${threads_flags[$j]}"
-			[[ "${tflag}" == "$TINT" ]] && echo "$TRUN" > "${threads_flags[$j]}" && break
-		done			
+		fi		
 		sleep 0.1
 	done
 	
@@ -479,7 +479,7 @@ function RunThread
         fi
     done
     # job is done. Send a message to the handler
-    thread_safe_echo -e "\nthread#${threadID} sending message to handler"
+    #thread_safe_echo -e "\nthread#${threadID} sending message to handler"
 	send_message $threadID
 }
 
