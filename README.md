@@ -41,7 +41,7 @@ The defalud cmake install prefix is `/usr/local` but you can chose another one. 
 
 ```bash
 $ cmake -DCMAKE_INSTALL_PREFIX="/usr"
-$ make && make install
+$ make && sudo make install
 
 # or
 
