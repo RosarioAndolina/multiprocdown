@@ -178,9 +178,9 @@ function print_usage
 	echo "|                 |  downloading.                                                    |"
 	echo "| 5:5:10:10:20:20 | the sum is 70 so the 30% missed will be added at the last chunk. |"
 	echo "|                 |  Equivalent to 5:5:10:10:20:50                                   |"
-	ecoh "| 10:10:20:30:40  | the sum exceeds 100 in the last chunk so the 40% chunk will be   |"
+	echo "| 10:10:20:30:40  | the sum exceeds 100 in the last chunk so the 40% chunk will be   |"
 	echo "|                 |  discarded remaning with 10:10:20:30 that is equivalent          |"
-	ehco "|                 |  to 10:10:20:60                                                  |"
+	echo "|                 |  to 10:10:20:60                                                  |"
 	echo
     echo "the FORMAT sequence will be stoped when the sum of the chunks rate exceeds 100"
     echo "the possible difference will be added to the last chunk"
