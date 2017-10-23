@@ -36,9 +36,3 @@ test:
     - downfile.pdf
     expire_in: 15 mins
 
-killcurl:
-  stage: test
-  script:
-  - while [[ $(pgrep -c multiprocdown) == 0 ]]; do sleep 5; done
-  - while [[ $(pgrep -c curl) != 0 ]]; do read -a curlpids < <(pgrep curl); pidtokill=${curlpids[$[$RANDOM % ${#curlpids[@]}]]}; kill $pidtokill; sleep 10; done
-  
