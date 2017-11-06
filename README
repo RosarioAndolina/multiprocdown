@@ -20,26 +20,25 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 dependecies:
 	curl
 	awk
+	cmake
 
 optionals dependecies:
 	pulseaudio|mplayer|vlc: audio support
 	gnuplot: graphic support
 
 installation:
+	cmake
+	make && make install
+	
+	or
+	
 	cmake -DCMAKE_INSTALL_PREFIX=<your_build_directory>
 	make && make install
 	
-	the default cmake install prefix is /usr/local, if you like to
-	install in your own personal directory please use cmake.
-	If you'll use "make DESTDIR=<your_build_directory> install", multiprocdow
-	will fail while loocking for audio files needed for audio support
-	for example:
-		your_build_dir=${HOME}/multiprocdown/usr
-		cmake -DCMAKE_INSTALL_PREFIX="${you_build_dir}"
-		make && make install
+	the default cmake install prefix is /usr/local
 
 
-Usage: multiprocdown -u URL | --url[=]URL [OPTIONS]...
+Usage: multiprocdown -u URL | -l SNAP_FILE [OPTIONS]...
 
 "multiprocdown" is a multiprocess download utility very useful for
 big files. It uses curl, downloading N chunk of the file in parallel
@@ -104,8 +103,16 @@ of 20% of the file dimension each
 
 FORMAT examples:
 
-5:5:10:30:50       download 5% first with N threads and then 5% N threads etc.
-1:5:10:20:20:44    is good if you want to see video files large pier
-                     while downloading.
+|     FORMAT      |                           DESCRIPTION                            |
+| --------------- | ---------------------------------------------------------------- |
+| 5:5:10:30:50    | download 5% first with N threads and then 5% with N threads etc. | 
+| 1:5:10:20:20:44 | is good if you want to see video files large pier while          |
+|                 |  downloading.                                                    | 
+| 5:5:10:10:20:20 | the sum is 70 so the 30% missed will be added at the last chunk. |
+|                 |  Equivalent to 5:5:10:10:20:50                                   |
+| 10:10:20:30:40  | the sum exceeds 100 in the last chunk so the 40% chunk will be   |
+|                 |  discarded remaning with 10:10:20:30 that is equivalent          |
+|                 |  to 10:10:20:60                                                  |
+
 the FORMAT sequence will be stoped when the sum of the chunks rate exceeds 100
 the possible difference will be added to the last chunk

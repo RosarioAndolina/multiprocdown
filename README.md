@@ -1,6 +1,6 @@
-## multiprocdown - Fasten download processes with parallelism
+# Multiprocdown - Fasten download processes with parallelism
 
-Author: Rosario Andolina <andolinarosario@gmail.com>
+Author: *Rosario Andolina* <andolinarosario@gmail.com>
 Copyright (C) 2017  Rosario Andolina
 
 This program is free software; you can redistribute it and/or modify
@@ -17,148 +17,155 @@ You should have received a copy of the GNU General Public License along
 with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-### dependecies:
+## Dependecies
 
-* curl
-* awk
+* `curl`
+* `awk`
+* `cmake`
 
-### optionals dependecies:
+## Optionals dependecies
 
-* pulseaudio|mplayer|vlc: audio support
-* gnuplot: graphic support
-* tor: download anonimously
+* `pulseaudio` | `mplayer` | `vlc`: for audio support
+* `gnuplot`: for graphic support
+* `tor`: to download anonimously
 
-### installation:
+## Installation:
 
-```bash
-cmake -DCMAKE_INSTALL_PREFIX=<your_build_directory>
-make && make install
-```
-	
-the default cmake install prefix is /usr/local, if you like to
-install in your own personal directory please use cmake.
-If you'll use `make DESTDIR=<your_build_directory> install`, multiprocdow
-will fail while loocking for audio files needed for audio support
-for example:
+`multiprocdown` can be installed using cmake in the usual way
 
 ```bash
-your_build_dir=${HOME}/multiprocdown/usr
-cmake -DCMAKE_INSTALL_PREFIX="${you_build_dir}"
-make && make install
+$ cmake
+$ make && sudo make install
 ```
-
-### Usage
+The defalud cmake install prefix is `/usr/local` but you can chose another one. For example:
 
 ```bash
-multiprocdown -u URL | --url[=]URL [OPTIONS]...
+$ cmake -DCMAKE_INSTALL_PREFIX="/usr"
+$ make && sudo make install
+
+# or
+
+$ cmake -DCMAKE_INSTALL_PREFIX=<you-build-dir>
+$ make && make install
+
+# or
+
+$ cmake -DCMAKE_INSTALL_PREFIX="/usr"
+$ make && make DESTDIR=<you-build-dir> install
 ```
 
-**multiprocdown** is a multiprocess download utility very useful for
+## Usage
+
+```bash
+multiprocdown -u URL | -l SNAP_FILE [OPTIONS]...
+```
+
+`multiprocdown` is a multiprocess download utility very useful for
 big files. It uses `curl`, downloading N chunk of the file in parallel
 
 Mandatory arguments to long options are mandatory for short options too.
 
-#### **Required mutual exclusive**:
+#### Required mutual exclusive:
 
 ---
 
-**-u**, **--url**[=]URL
+`-u, --url[=]URL`
 
-the URL of the file to be downloaded
+the **URL** of the file to be downloaded
 
 ---
 
-**-l**, **--load-snapshot**[=]SNAP_FILE
+`-l, --load-snapshot[=]SNAP_FILE`
   
 load a saved snapshot to exhume the download
 
----
+### Options:
 
-#### **Options**:
+`-n, --nthreads[=]N`
 
----
-
-**-n**, **--nthreads**[=]N
-
-[10] the number of threads used for parallel download
+the number of threads used for parallel download [10]. Ignored with `-l` option.
 
 ---
 
-**-o**, **--output**[=]F_OUT
+`-o, --output[=]F_OUT`
 
-the output file name
+the output file name. Ignored with `-l` option
 
 ---
 
-**-v**, **--verbose**
+`-v, --verbose`
 
 print more info on stdout
 
 ---
 
-**-d**, **--use-dd**
+`-d, --use-dd`
 
 use `dd` to write the chunks relating to each thread on the same file, 
-in this way, while downloading a video
-you can see a preview (see **-f**,**--first** option)
+in this way, while downloading a video you can see a preview
+(see `-f, --first` option)
+
+Ignored with `-l` option.
 
 ---
 
-**--md5**[=]VALUE
+`--md5[=]VALUE`
 
-calculates the md5sum of the output file and compares with VALUE
-
----
-
-**--sha1**[=]VALUE
-calculates the sha1sum of the output file and compares with VALUE
+calculates the `md5sum` of the output file and compares with **VALUE**
 
 ---
 
-**-g**, **--enable-graph**
+`--sha1[=]VALUE`
+calculates the `sha1sum` of the output file and compares with **VALUE**
+
+---
+
+`-g, --enable-graph`
 
 enables graphic support showing a graph with the progress of each tread.
+Ignored with `-l` option.
 
 ---
 
-**-f**, **--first**[[=]FORMAT]
-download first the initial part of the file and then the rest, according to the FORMAT. `dd` is used by default
+`-f, --first[[=]FORMAT]`
+download first the initial part of the file and then the rest, according to the **FORMAT**. `dd` is used by default.
+Ignored with `-l` option.
 
 ---
 
-**-s**, **--save-snapshot**[[=]SNAP_FILE]
+`-s, --save-snapshot[[=]SNAP_FILE]`
 
 if the script exit save a snapshot of the current download
 the download may be exhumed by loading the snapshot, if
-the url is still valid. See **-l**, **--load-snapshot**
+the **URL** is still valid. See `-l, --load-snapshot` option.
 
 ---
 
-**-a**, **--anonimous**
+`-a, --anonimous`
 
 if possible uses `tor` proxyes
 
 ---
 
-**-h**, **--help**
+`-h, --help`
 
 print this message and exit unsuccesfully
 
 ---
 
-**-V**, **--version**
+`-V, --version`
 
 print program name and version and exit unsuccesfully
 
 ---
 
-Option **-g**, **--enable-graph** display a bar plot showing the progress percetage
+Option `-g, --enable-graph` display a bar plot showing the progress percetage
 of every single thread. `gnuplot` is required.
 
-The **-f**, **--first** option is useful when you whant to watch a video while
+The `-f, --first` option is useful when you whant to watch a video while
 downloading. The progress graph will be disabled
 
-the SNAP_FILE, if not specified, will have `.snp` extention and the same
+the **SNAP_FILE**, if not specified, will have `.snp` extention and the same
 name of the output file
 
 ---

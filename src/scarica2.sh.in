@@ -33,19 +33,28 @@ readonly GP_ERROR=11             # gnuplot not found
 readonly TOR_ERROR=12            # connection through Tor isn't possible
 
 # tor flags
-readonly TOR_INST_NOTRUN=1        # tor is installed but service not running
+readonly TOR_INST_NOTRUN=1       # tor is installed but service not running
 readonly TOR_INST_RUN=2          # tor is installed and service running
 readonly TOR_NOTINST=3           # tor is't installed
 torflag=0
 
+readonly TINT=1                  # thread interrupted flag
+readonly TRUN=0                  # thread runnig flag
+readonly TEXIT=2                 # thread exit if it's setted
+readonly BRUN=0                  # progress bar running flag
+readonly BSTOP=1                 # progress bar stop flag
+readonly GRUN=0                  # progress graph run flag
+readonly GSTOP=1                 # progress graph stop flag
+
 readonly PROGNAME="@PACKAGE@"
 readonly VERSION="@VERSION@"
+
 INSTALL_DIR=$(dirname ${BASH_SOURCE[0]})
 while [[ "${INSTALL_DIR##*/}" != "usr" ]]; do
 	INSTALL_DIR=${INSTALL_DIR%/*}
 done
+
 readonly SOUND_DIR=${INSTALL_DIR}/share/${PROGNAME}
-echo -e "\n\n********* SOUND_DIR = ${SOUND_DIR} *************"
 readonly ERROR_SOUND="${SOUND_DIR}/breaking-some-glass.ogg"
 readonly NOTIFY_SOUND="${SOUND_DIR}/demonstrative.ogg"
 readonly TEMPDIR=/tmp/$PROGNAME
@@ -65,7 +74,7 @@ pplot=$TEMPDIR/progress.data
 gplt_script=$TEMPDIR/gplt_script.plt
 [[ -e $gplt_script ]] && rm $gplt_script
 
-alias cvlc="cvlc -q --no-loop --play-and-exit"
+CVLC="cvlc -q --no-loop --play-and-exit"
 
 url=""
 declare -i nthreads=10         # threads number
@@ -89,8 +98,9 @@ snapfileL=""                   # snapshot file to load
 loadedst=()                    # loaded threads snapshot start and stop
 usetor=false                   # connect through Tor
 proxy=""
-lock_fd=200                    # lock-file file descriptor
 snap_fd=3                      # snapshot file descriptor
+threads_flags=()               # threads flag list
+fd_init=250                    # initial file descriptor for threads flags
 
 #_______________________________________________________________________
 function print_usage
@@ -161,12 +171,113 @@ function print_usage
     echo
     echo "FORMAT examples:"
     echo
-    echo "5:5:10:30:50       download 5% first with N threads and then 5% N threads etc."
-    echo "1:5:10:20:20:44    is good if you want to see video files large pier"
-    echo "                     while downloading."
+	echo "|     FORMAT      |                           DESCRIPTION                            |"
+	echo "| --------------- | ---------------------------------------------------------------- |"
+	echo "| 5:5:10:30:50    | download 5% first with N threads and then 5% with N threads etc. |"
+	echo "| 1:5:10:20:20:44 | is good if you want to see video files large pier while          |"
+	echo "|                 |  downloading.                                                    |"
+	echo "| 5:5:10:10:20:20 | the sum is 70 so the 30% missed will be added at the last chunk. |"
+	echo "|                 |  Equivalent to 5:5:10:10:20:50                                   |"
+	echo "| 10:10:20:30:40  | the sum exceeds 100 in the last chunk so the 40% chunk will be   |"
+	echo "|                 |  discarded remaning with 10:10:20:30 that is equivalent          |"
+	echo "|                 |  to 10:10:20:60                                                  |"
+	echo
     echo "the FORMAT sequence will be stoped when the sum of the chunks rate exceeds 100"
     echo "the possible difference will be added to the last chunk"
     echo
+}
+
+#___________________________________________________________________________
+# thread safe echo func
+thread_safe_echo()
+{
+	(
+		flock -n ${echo_lock_fd}
+		echo "$@"
+	){echo_lock_fd}>> ${echo_lock}
+}
+
+#___________________________________________________________________________
+# threads sends messages to the handler only when they complete the job
+send_message()
+{
+	local msg=$1                       # msg = thread id if thread job is done, error otherwise
+	# thread safe message sending
+	(
+		flock -n ${msg_lock_fd}
+		echo "$msg" > ${handler_fifo}      # the message is the thread_id itself
+	){msg_lock_fd}>> ${msg_lock}
+}
+
+#___________________________________________________________________________
+# handle threads message and start interrupted threads
+messages_handler()
+{
+	local num_working_tasks=$1
+	local tid=()                                  # thread id
+	local tflag                                   # thread flag
+	local j=0
+	local num_tint=0
+	local prev_num_wt=$num_working_tasks
+	local num_attempts=1
+	local max_num_attempts=5
+	local id
+	echo 0 > "$handler_flag"
+	# wait for messages while there are tasks
+	while [[ $num_working_tasks -gt 0 ]]; do
+		tid=
+		if read -t 1 -a tid < "${handler_fifo}" &> /dev/null; then
+			for id in ${tid[@]}; do
+				if [[ "$id" != "error" ]]; then                   # a thread has finished
+					[[ $verbose == true ]] && thread_safe_echo -e "\nhandler: thread#$id has finished"
+					prev_num_wt=$num_working_tasks
+					num_working_tasks=$[$num_working_tasks-1] # decrement by one
+					# check the threads flags. If one of them is TINT reset to TRUN and break
+					for (( j=0; j<$nthreads; j++ )); do
+						read tflag < "${threads_flags[$j]}"
+						[[ "${tflag}" == "$TINT" ]] && echo "$TRUN" > "${threads_flags[$j]}" && break
+					done
+					echo "BYE" > "${threads_flags[$[$id-1]]}"
+				fi
+			done
+		fi
+		# check if all threads are interrupted
+		num_tint=0
+		#thread_safe_echo "handler: checking num_tint"
+		for (( j=0; j<$nthreads; j++ )); do
+			read tflag < "${threads_flags[$j]}"
+			[[ "$tflag" == "$TINT" ]] && num_tint=$[$num_tint+1]
+		done
+		if [[ $num_working_tasks != 0 && $num_tint == $num_working_tasks ]]; then
+			thread_safe_echo -e "\n${W}Warning:${Reset} all threads has been interrupted by the server"
+			if [[ $prev_num_wt -gt $num_working_tasks && $num_attempts -lt $max_num_attempts ]]; then
+				thread_safe_echo -e "\nI'll try again"
+				echo -e "${W}handler:${Reset} attempt no $num_attempts"
+				for (( j=0; j<$nthreads; j++ )); do
+					read tflag < "${threads_flags[$j]}"
+					[[ "${tflag}" == "$TINT" ]] && echo "$TRUN" > "${threads_flags[$j]}"
+				done
+				num_attempts=$[$num_attempts+1]
+			else
+				for (( j=0; j<$nthreads; j++ )); do
+					echo "$TEXIT" > "${threads_flags[$j]}"
+				done
+				echo 1 > "$handler_flag"
+				break
+			fi
+		fi
+		sleep 0.1
+	done
+	
+	# set the progress bar flag to BSTOP
+	echo "$BSTOP" > "$pbar_flag"
+	
+	# set the progress graph flag to GSTOP
+	[[ $graph == true ]] && echo "$GSTOP" > "$pgraph_flag"
+	
+	local hf
+	read hf < "$handler_flag"
+	[[ $hf == 0 ]] && stdbuf -oL echo "-- All threads has finished" || stdbuf -oL echo "handler exiting 1 ... "
 }
 
 #___________________________________________________________________________
@@ -193,7 +304,7 @@ function human_time
 # play error or notification sounds
 function Play
 {
-    local players=(paplay cvlc mplayer)
+    local players=(paplay "$CVLC" mplayer)
     for p in $players; do
         which "$p" &> /dev/null && "$p" "$1" &> /dev/null && break
     done
@@ -305,17 +416,34 @@ function save_snapshot
 # remove and/or close opened files when killed
 function clean_up
 {
-    #local f2rm
     if [[ $usedd == true ]]; then
         rm -f $TEMPDIR/${PROGNAME}*.log
     elif [[ $savesnap == false ]]; then
         rm -f "${output}.part*"
     fi
     
-    exec {lock_fd}<&-
+    exec {handler_flag_fd}<&-
+    rm -f $handler_flag
+    rm -f $handler_fifo
+	exec {echo_lock_fd}<&-
+	rm -f $echo_lock
+	exec {msg_lock_fd}<&-
+	rm -f $msg_lock
+	exec {pbar_flag_fd}<&-
+	rm -f $pbar_flag
+	if [[ $graph == true ]]; then
+		exec {pgraph_flag_fd}<&-
+		rm -f $pgraph_flag
+	fi
+	
+	for (( i=0; i<$nthreads; i++ )); do
+		FD=$[$fd_init+$i]
+		exec {FD}<&-
+		rm -f ${threads_flags[$i]}
+	done
+    
     [[ $loadsnap == true ]] && exec {snap_fd}<&-
-    rm -f $lockfile
-    exit_error $KILLED_ERROR $1
+    #exit_error $KILLED_ERROR $1
 }
 
 #______________________________________________________________________________
@@ -323,6 +451,7 @@ function get_chunks_rate
 {
     local i=0
     local sum=0
+    local token
     while read token; do
         sum=$[$sum+$token]
         [[ $sum -gt 100 ]] && break   # chunks are considered good while sum is less than 100
@@ -348,18 +477,21 @@ function RunThread
     local flog=$TEMPDIR/${PROGNAME}T${threadID}.log   # curl log file, needed for checking errors
     local fdata=$TEMPDIR/thread${threadID}.data     # file of data to plot threads statistics
     local ddargs="oflag=seek_bytes conv=notrunc,sparse status=progress"
-    #local proxy=""
     local bytes_copied=0
+    local tflag
+    local flagid=$[$threadID-1]
     
     trap "rm -f $flog; exit $KILLED_ERROR" INT TERM
-    # acquire lock to write messages on stdout
+    
+    # init the flag
+    echo "$TRUN" > "${threads_flags[$flagid]}"
+    
     if [[ $verbose == true ]]; then
-    (
-        flock -n ${lock_fd}
-        printf "\rThread${Blue}%d${Reset} %d - %d\n" $threadID $fstart $fstop
-    ){lock_fd}>>$lockfile
+		thread_safe_echo -e -n "\rThread${Blue}${threadID}${Reset} ${fstart} - ${fstop}\n"
     fi
+    
     [[ -e $fdata ]] && rm $fdata
+    
     while [[ $foffset -lt $fstop ]]; do
         # download (fstop-foffset)
         # if the foffset byte is equal to the fstop byte then the thread's chunk
@@ -372,33 +504,46 @@ function RunThread
         
         # if the connection drop continue the download updating the offset
         bytes_copied=$(tail -n1 $fdata | stdbuf -oL awk '/bytes/ { print $1 }')
+        
+        # update the offset
         foffset=$[$fstart+$bytes_copied-1]
+        
+        # check for errors in flog
         grep -q error $flog
         if [[ $? -eq 0 ]]; then
             # the server has sent an error message
             # maybe it only accepts a limited number of connections from the same IP address
-            (
-                flock -n ${lock_fd}
-                printf "\r${White}Thread${Blue}%d${Reset} interrupted by the server. Will restart ASAP\n" $threadID
-            ){lock_fd}>>$lockfile
-            sleep 0.5
-            # counts the number of active connections
-            local active_conn=$(pgrep -c curl)
-            while [[ $(pgrep -c curl) -ge $active_conn ]]; do
-                sleep 1  # sleep until one or more active connections have finished their work
-            done
-            (
-                flock -n ${lock_fd}
-                printf "\r${White}Thread${Blue}%d ${Reset}restarted\n" $threadID
-            ){lock_fd}>>$lockfile
+            thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} interrupted by the server. Will restart ASAP"
+            # set the flag to TINT
+			echo "$TINT" > "${threads_flags[$flagid]}"
+			(
+				flock -n ${msg_lock_fd}
+				send_message "error"
+			){msg_lock_fd}>> "$msg_lock"
+			# wait until the handler reset the flag
+			while :; do
+				read tflag < "${threads_flags[$flagid]}"
+				if [[ $tflag == $TRUN ]]; then
+					thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} restarted"
+					break
+				elif [[ $tflag == $TEXIT ]]; then
+					thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} exiting ..."
+					return 1
+				fi
+				sleep 0.1
+			done
         elif [[ $foffset -lt $fstop ]]; then
-            (
-                flock -n ${lock_fd}
-                printf "\r${White}Thread${Blue}%d ${Reset}connection dropped and restarted\n" $threadID
-            ){lock_fd}>>$lockfile
+			thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} connection dropped and restarted"
         fi
     done
-        
+    # job is done. Send a message to the handler
+    local byemsg
+    while [[ "$byemsg" != "BYE" ]]; do
+		[[ $verbose == true ]] && thread_safe_echo -e "\nthread#${threadID} sending message to handler"
+		send_message $threadID
+		sleep 0.1
+		read byemsg < "${threads_flags[$flagid]}"
+	done
 }
 
 #______________________________________________________________________________
@@ -416,6 +561,11 @@ function StartThread
     local foffset=$fstart
     local fdropcflag=0                  # flag for dropped connection
     local ffname="${output}.part${threadID}"
+    local tflag
+    local flagid=$[$threadID-1]
+    
+    # init the flag
+    echo "$TRUN" > "${threads_flags[$flagid]}"
     
     if [[ $loadsnap == true ]]; then
         fdropcflag=1
@@ -425,6 +575,7 @@ function StartThread
     fi
     
     trap "exit $KILLED_ERROR" INT TERM
+    
     while [ $foffset -lt $fstop ]; do
         # download (fstop-foffset) bytes of the file in a temp file
         # if the foffset byte is equal to the fstop byte then the chunk
@@ -435,21 +586,32 @@ function StartThread
             if [ $? -eq 0 -a "$(file \"${ffname}.tmp\" |awk '{ print $2 }')" == "HTML" ]; then
                 # the server has sent an error message
                 # maybe it only accepts a limited number of connections from the same IP address
-                echo -e "${White}Thread${Blue}$threadID ${Reset}interrupted by the server. Will restart ASAP"
-                sleep 0.5
-                # counts the number of active connections
-                local active_conn=$(pgrep -c curl)
-                while [[ $(pgrep -c curl) -ge $active_conn ]]; do
-                    sleep 1  # sleep until one or more active connections have finished their work
-                done
-                echo -e "${White}Thread${Blue}$threadID ${Reset}restarted"
+                thread_safe_echo -e "\n${White}Thread${Blue}$threadID ${Reset}interrupted by the server. Will restart ASAP"
+                # set the flag to TINT
+				echo "$TINT" > "${threads_flags[$flagid]}"
+				(
+				flock -n ${msg_lock_fd}
+					send_message "error"
+				){msg_lock_fd}>> "$msg_lock"
+				# wait until the handler reset the flag
+				while :; do
+					read tflag < "${threads_flags[$flagid]}"
+					if [[ $tflag == $TRUN ]]; then
+						thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} restarted"
+						break
+					elif [[ $tflag == $TEXIT ]]; then
+						thread_safe_echo -e "\n${White}Thread${Blue}${threadID}${Reset} exiting ..."
+						return 1
+					fi
+					sleep 0.1
+				done
             else
                 fsize_temp=$(du -b "${ffname}.tmp" |awk '{ print $1 }')
                 foffset=$[$foffset+$fsize_temp]  # -1 because the file starts from byte 0
                 cat "${ffname}.tmp" >> "$ffname" # copy the temporary data in the file for the current chunk
                 if [[ $foffset -lt $fstop ]]; then
                     # the connection has been dropped
-                    echo -e "${White}Thread${Blue}$threadID ${Reset}the connection has been dropped. Recovery connection"
+                    thread_safe_echo -e "\n${White}Thread${Blue}$threadID ${Reset}the connection has been dropped. Recovery connection"
                     fdropcflag=1  # the temp file can't be renamed because incomplete
                 fi
             fi
@@ -461,6 +623,15 @@ function StartThread
         # temp. file was alredy copied in ffname
         rm -f "${ffname}.tmp"
     fi
+    
+    # job is done. Send a message to the handler
+    local byemsg=""
+	while [[ "$byemsg" != "BYE" ]]; do
+		[[ $verbose == true ]] && thread_safe_echo -e "\nthread#${threadID} sending message to handler"
+		send_message $threadID
+		sleep 0.1
+		read byemsg < "${threads_flags[$flagid]}"
+	done
 }
 
 #______________________________________________________________________________
@@ -472,7 +643,12 @@ function progress_bar
     declare -i percent
     local cols=`tput cols`
     local barlength=$[$cols-($cols/3)]
+    local flag
     bar=`printf "%${barlength}s" "" |tr ' ' '#'`
+    
+    # init the flag
+    echo "$BRUN" > "$pbar_flag"
+    
     while true; do
         sleep 1
         last_fdim=$actual_fdim
@@ -488,17 +664,22 @@ function progress_bar
         percent=$[($actual_fdim*100)/$content_length]
         # acquire lock
         (
-            flock -n ${lock_fd}
+            flock -n ${echo_lock_fd}
             printf " [%-${barlength}s] %3d%% %6d KB/s\r" "${bar:0:$[(${#bar}*$percent)/100]}" $percent $down_rate
-        ){lock_fd}>>$lockfile
-        # break if there are no more curl process
-        [[ $(pgrep -c curl) -eq 0 ]] && break
+        ){echo_lock_fd}>>$echo_lock
+        
+        # break if there are no more running threads
+        read flag < "$pbar_flag"
+        [[ "$flag" == "$BSTOP" ]] && break
     done
 }
 
 #______________________________________________________________________________
 function progress_graph
 {
+	# init the flag
+	echo "$GRUN" > "pgraph_flag"
+	
     # write gnuplot script
     printf "set boxwidth 0.75\n" >> $gplt_script
     printf "set style fill solid\n" >> $gplt_script
@@ -514,11 +695,16 @@ function progress_graph
     local percent=0
     local chunk_size=$[$content_length/$nthreads]
     local ILchunk_size=$chunk_size
-    #printf "chunk_size = %s\n" $chunk_size $test
+    local flag
     local plotdata
+    
     trap "rm -f $pplot; exit $KILLED_ERROR" INT TERM
     while : ;do
-        [[ $(pgrep -c curl) -eq 0 ]] && break
+    
+		# break if there are no more running threads
+        read flag < "$pgraph_flag"
+        [[ "$flag" == "$GSTOP" ]] && break
+        
         plotdata=""
         actual_bytes=0
         for ((i=1;i<=$nthreads;i++)); do
@@ -579,11 +765,7 @@ function touch_output
 # print usage and exit
 [[ $# -eq 0 ]] && exit_error $USAGE
 
-#check_tor
-
-mkdir -p /tmp/lock
-lockfile="/tmp/lock/${PROGNAME}$$.lock"
-exec {lock_fd}>$lockfile
+[[ "$verbose" == "true" ]] && echo -e "\n\n********* SOUND_DIR = ${SOUND_DIR} *************"
 
 # parse options
 while [[ $# -gt 0 ]]; do
@@ -770,6 +952,44 @@ if [[ $usetor == true ]]; then
     esac
 fi
 
+# flags directory
+mkdir -p /tmp/flags
+
+# locks directory
+mkdir -p /tmp/lock
+
+# open threads flag files rw mode
+for (( i=0; i<$nthreads; i++ )); do
+	FD=$[$fd_init+$i]                            # i-th flag file descriptor
+	threads_flags[$i]="/tmp/flags/thread$i"      # populate flag list
+	exec {FD}<> "${threads_flags[$i]}"           # open i-th flag file rw mode
+done
+
+# messages handler exitflag
+handler_flag_fd=300
+handler_flag="/tmp/flags/handler_flag"
+exec {handler_flag_fd}<> "$handler_flag"
+echo "0" > "$handler_flag"
+
+# messages handler fifo init
+handler_fifo="/tmp/flags/handler"                     # handler fifo
+[[ ! -p $handler_fifo ]] && mkfifo $handler_fifo      # open handler fifo
+
+# messages lock file
+msg_lock="/tmp/lock/msg_lock"
+msg_lock_fd=301
+exec {msg_lock_fd}> ${msg_lock}
+
+# echo lock file
+echo_lock="/tmp/lock/echo_lock"
+echo_lock_fd=302
+exec {echo_lock_fd}> ${echo_lock}
+
+# open progress bar flag file
+pbar_flag_fd=303
+pbar_flag="/tmp/flags/pbar_flag"
+exec {pbar_flag_fd}<> "$pbar_flag"
+
 if [[ $loadsnap == true ]]; then
     [[ $first == true ]] && exit_error $OPT_CONFLICT_ERROR "-f,--first" "-l,--load-snapshot"
     savesnap=true
@@ -817,6 +1037,13 @@ if [[ $graph == true ]]; then
     which gnuplot &> /dev/null || exit_error $GP_ERROR
 fi
 
+# open progress graph flag file
+if [[ $graph == true ]]; then
+	pgraph_flag_fd=304
+	pgraph_flag="/tmp/flags/pgraph_flag"
+	exec {pgraph_flag_fd}<> "$pgraph_flag"
+fi
+
 # initialize thsnapbc
 if [[ $savesnap == true && $loadsnap == false ]]; then
     for ((i=0;i<$nthreads;i++)); do
@@ -836,7 +1063,7 @@ while [[ $content_length -eq 0 ]]; do
         case $1 in
             Content-Length*|content-length*)
             content_length=${2%*$'\r'*} #get the left part at the first occurrence of \r (excluded)
-            printf "content length: %d\n" $content_length
+            #printf "content length: %d\n" $content_length
             ;;
             Content-Type*|content-type*)
             file_ext=$(echo ${2%*$'\r'*} |awk -F '/' '{ print $2 }') #get the file extension
@@ -908,7 +1135,7 @@ else
 fi
 
 #trap "save_snapshot; clean_up SIGHUP"  SIGHUP
-trap "save_snapshot; clean_up SIGINT"  SIGINT
+trap "save_snapshot; clean_up; exit_error $KILLED_ERROR SIGINT"  SIGINT
 #trap "save_snapshot; clean_up SIGTERM" SIGTERM
 
 # get the corresponding chunk size in bytes from the chunks_rate in %
@@ -934,7 +1161,7 @@ fi
 time_elapsed=$SECONDS
 # chunks loop
 while [[ $cc -lt $nchunks ]]; do
-    [[ $verbose == true ]] && printf "downloading chunk %d\n" $cc
+    [[ $verbose == true ]] && printf "\ndownloading chunk %d\n" $cc
     [[ $usedd == false ]] && file_out=()   # a list with the partial output file names (old algo)
     [[ $savesnap == true ]] && snapstart=$chunkstart
     division=$[${chunksize[$cc]} / $nthreads]     # the single thread chunk
@@ -972,6 +1199,9 @@ while [[ $cc -lt $nchunks ]]; do
     chunkstart=$[$chunkstart+${chunksize[$cc]}]     # update the chunk's start byte
     cc=$[$cc+1]        # update the current chunk num.
     
+    # start the handler
+    messages_handler $nthreads &
+    
     # progress bar
     progress_bar &
 
@@ -984,60 +1214,58 @@ while [[ $cc -lt $nchunks ]]; do
     fi
 
     wait  # wait and join the threads when finished
+    
+    read hf < "$handler_flag"
+    [[ $hf != 0 ]] && break
 done
 echo
 time_elapsed=$[$SECONDS-$time_elapsed]
 
-# download completed
-Play $NOTIFY_SOUND &
-printf "\n Download completed\n"
-
-[[ $verbose == true && $usedd == false ]] && ls -lh |grep "$output" | awk '{ print "\033[1;32m"$9"  \033[1;34m"$5"\033[00m" }'
-
-if [[ $usedd == false ]]; then
-    # join all the chunks in one file
-    [[ $verbose == true ]] && printf "All the chunks will be joined together\n\n"
-    for f in ${file_out[@]}; do
-        cat "$f" >> "$output"
-        [[ $verbose == true ]] && printf "${Red}removing the file %s$Reset\n" "$f"
-        rm "$f"
-    done
-else
-    rm $TEMPDIR/${PROGNAME}*.log
-    rm $TEMPDIR/thread*.data
+if [[ $hf == 0 ]]; then
+	# download completed
+	Play $NOTIFY_SOUND &
+	printf "\nDownload completed\n"
+	
+	[[ $verbose == true && $usedd == false ]] && ls -lh |grep "$output" | awk '{ print "\033[1;32m"$9"  \033[1;34m"$5"\033[00m" }'
+	
+	if [[ $usedd == false ]]; then
+	    # join all the chunks in one file
+	    [[ $verbose == true ]] && printf "All the chunks will be joined together\n\n"
+	    for f in ${file_out[@]}; do
+	        cat "$f" >> "$output"
+	        [[ $verbose == true ]] && printf "${Red}removing the file %s$Reset\n" "$f"
+	        rm "$f"
+	    done
+	else
+	    rm $TEMPDIR/${PROGNAME}*.log
+	    rm $TEMPDIR/thread*.data
+	fi
+	[[ $loadsnap == true && $usedd == false ]] && rm "$snapfileL"
+	actual_fsize=$(du -b "$output" |awk '{ print $1 }')
+	if [[ $actual_fsize != $content_length ]]; then
+	    printf "Ooooops something went wrong\nfile size mismatch\n\n"
+	elif [[ $loadsnap == true ]]; then
+	    rm -f "$snapfileL"
+	fi
+	
+	# calculate download rate
+	if [[ $loadsnap == true ]]; then
+	    down_rate=$[$content_left/($time_elapsed*1024)]
+	else
+	    down_rate=$[$content_length/($time_elapsed*1024)]
+	fi
+	
+	echo "Download rate: $down_rate KB/s in $(human_time $time_elapsed)"
+	
+	if [[ $checksum != "" ]]; then
+	    printf "\nchecking %s...\n" $checksum
+	    if [[ $md5 != "" ]]; then
+	        [[ $($checksum "$output" |awk '{ print $1 }') == $md5 ]] && printf "${Green}*****OK*****$Reset\n" || printf "${Red}*****NO*****$Reset\n"
+	    elif [[ $sha1 != "" ]]; then
+	        [[ $($checksum "$output" |awk '{ print $1 }') == $sha1 ]] && printf "${Green}*****OK*****$Reset\n" || printf "${Red}*****NO*****$Reset\n"
+	    fi
+	fi
 fi
-[[ $loadsnap == true && $usedd == false ]] && rm "$snapfileL"
-actual_fsize=$(du -b "$output" |awk '{ print $1 }')
-if [[ $actual_fsize != $content_length ]]; then
-    printf "Ooooops something went wrong\nfile size mismatch\n\n"
-elif [[ $loadsnap == true ]]; then
-    rm -f "$snapfileL"
-fi
 
-# calculate download rate
-if [[ $loadsnap == true ]]; then
-    down_rate=$[$content_left/($time_elapsed*1024)]
-else
-    down_rate=$[$content_length/($time_elapsed*1024)]
-fi
-
-echo "Download rate: $down_rate KB/s in $(human_time $time_elapsed)"
-
-#if [[ $time_elapsed -gt 60 && $time_enlapsed != 0 ]]; then
-    #echo "Download rate: $[$content_length/($time_elapsed*1024)]KB/s in $[$time_elapsed/60]m $[$time_elapsed%60]s"
-#else
-    #echo "Download rate: $[$content_length/($time_elapsed*1024)]KB/s in ${time_elapsed}s"
-#fi
-
-exec {lock_fd}<&-   # close the lock file
-
-if [[ $checksum != "" ]]; then
-    printf "\nchecking %s...\n" $checksum
-    if [[ $md5 != "" ]]; then
-        [[ $($checksum "$output" |awk '{ print $1 }') == $md5 ]] && printf "${Green}*****OK*****$Reset\n" || printf "${Red}*****NO*****$Reset\n"
-    elif [[ $sha1 != "" ]]; then
-        [[ $($checksum "$output" |awk '{ print $1 }') == $sha1 ]] && printf "${Green}*****OK*****$Reset\n" || printf "${Red}*****NO*****$Reset\n"
-    fi
-fi
-rm $lockfile
+clean_up
 echo

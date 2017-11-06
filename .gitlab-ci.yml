@@ -20,13 +20,19 @@ pachage:
 test:
   stage: test
   script:
+  - pacman -Sy --noconfirm cmake
   - pacman -U --noconfirm multiprocdown-*.tar.xz
   - ls -l /usr/bin/multiprocdown
   - URL="https://root.cern.ch/root/html534/guides/users-guide/ROOTUsersGuideA4.pdf"
   - MD5="40ae503446d0a073a89e93864b1aa123"
-  - $cido multiprocdown -u "$URL" -d -n 2 --md5=$MD5 -o downfile.pdf
+  - $cido multiprocdown -u "$URL" -dv -n 2 --md5=$MD5 -o downfile.pdf
   - ls -l downfile.pdf
+  - URL="https://www.dropbox.com/s/3obr0twa0zbkjfu/ElaboratoFinale_Rosario_Andolina.pdf?dl=0"
+  - $cido multiprocdown -u "$URL" -dv -o downfile2.pdf
+  - URL="https://n1045.thevideo.me:8777/mvcgnot5ag3hu37wrc5odkqofwuk5ffqpwdshjlgdnte6pe6kktmvv6qf6fmeizu5llfm6vunrhn7fgc36vnpiyfl3lwavcd37bcbfvw2wfx4fxyfbcumzx6ac2s4uqa5jezv5s7ezja5xmq6pfv4ei72xdvcpospciq2ragujfojcfzizpwkynd63c5v2afn6trzssqzx74yitikadc6ld2dxxcdvt4j43zgato4mpbbeblc5nzknrgdffiioso2fvf2gmwxwmeqcu3jgx7nmpal67q/v.mp4?direct=false&ua=1&vt=notlprqy3ugxedtmeofmarao6iea7qsnx6n43ctn5yjufel6ia3r5jgdl6k5f4udskkyg5pqhth7eomtsmf5nfpvy7wh2umpzoo3xbkm4kh2b5buhua4agfw4iq352vrpahiis4taceo7jdl35b7j2fkhbp7kuheepj72s6u3iygvt3g6hbdqmesckevepfguwwizk7rwaam4iqph3ghyemjmm7jb656jxyw2rqzuz62crdcbzhndkhmb66msjrqnxpvqm5w3jbal4oebvhzdzdlja"
+  - if curl -fI "$URL" &> /dev/null; then $cido multiprocdown -u "$URL" -dv -f 10:20:30:40 -o test.mp4; fi
   artifacts:
     paths:
     - downfile.pdf
-    expire_in: 1 hrs
+    expire_in: 15 mins
+
