@@ -8,7 +8,8 @@ pkgdesc="Fasten download processes with parallelism"
 arch=(any)
 license=('GPL')
 url="https://gitlab.com/tumeo-boys/multiprocdown"
-depends=('curl' 'gawk' 'cmake')
+depends=('curl' 'gawk')
+makedepends=('cmake')
 optdepends=('pulseaudio: for audio support' 'mplayer: alternative audio support' 'vlc: alternative audio support'
 			'gnuplot: for grafical output' 'tor: download anonimously')
 provides=('multiprocdown')
