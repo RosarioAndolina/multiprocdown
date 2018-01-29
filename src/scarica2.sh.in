@@ -49,10 +49,18 @@ readonly GSTOP=1                 # progress graph stop flag
 readonly PROGNAME="@PACKAGE@"
 readonly VERSION="@VERSION@"
 
-INSTALL_DIR=$(dirname ${BASH_SOURCE[0]})
-while [[ "${INSTALL_DIR##*/}" != "usr" ]]; do
-	INSTALL_DIR=${INSTALL_DIR%/*}
+INSTALL_DIR=${INSTALL_DIR/./${PWD}}
+
+while [[ "${INSTALL_DIR##*/}" != "" ]]; do
+    INSTALL_DIR=${INSTALL_DIR%/*}
+    if [[ "${INSTALL_DIR##*/}" == "usr" ]]; then
+	    break
+    fi
 done
+
+if [[ "$INSTALL_DIR" == "" ]]; then
+    INSTALL_DIR="/usr"
+fi
 
 readonly SOUND_DIR=${INSTALL_DIR}/share/${PROGNAME}
 readonly ERROR_SOUND="${SOUND_DIR}/breaking-some-glass.ogg"
