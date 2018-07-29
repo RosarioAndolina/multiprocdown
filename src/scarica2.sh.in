@@ -58,7 +58,7 @@ readonly SOUND_DIR=${INSTALL_DIR}/share/${PROGNAME}
 readonly ERROR_SOUND="${SOUND_DIR}/breaking-some-glass.ogg"
 readonly NOTIFY_SOUND="${SOUND_DIR}/demonstrative.ogg"
 readonly PID=$$
-readonly TEMPDIR=/tmp/$PROGNAME_$PID
+readonly TEMPDIR="/tmp/${PROGNAME}_${PID}"
 readonly Blue='\033[01;34m'
 readonly White='\033[01;37m'
 readonly Red='\033[01;31m'
@@ -67,7 +67,7 @@ readonly E='\033[01;41m'
 readonly W='\033[01;43m'
 readonly Reset='\033[00m'
 
-mkdir -p $TEMPDIR
+mkdir -p "${TEMPDIR}"
 
 pplot=$TEMPDIR/progress.data
 [[ -e $pplot ]] && rm $pplot
