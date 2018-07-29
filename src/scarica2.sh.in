@@ -57,7 +57,8 @@ done
 readonly SOUND_DIR=${INSTALL_DIR}/share/${PROGNAME}
 readonly ERROR_SOUND="${SOUND_DIR}/breaking-some-glass.ogg"
 readonly NOTIFY_SOUND="${SOUND_DIR}/demonstrative.ogg"
-readonly TEMPDIR=/tmp/$PROGNAME
+readonly PID=$$
+readonly TEMPDIR=/tmp/$PROGNAME_$PID
 readonly Blue='\033[01;34m'
 readonly White='\033[01;37m'
 readonly Red='\033[01;31m'
@@ -953,41 +954,41 @@ if [[ $usetor == true ]]; then
 fi
 
 # flags directory
-mkdir -p /tmp/flags
+mkdir -p /tmp/flags_$PID
 
 # locks directory
-mkdir -p /tmp/lock
+mkdir -p /tmp/lock_$PID
 
 # open threads flag files rw mode
 for (( i=0; i<$nthreads; i++ )); do
 	FD=$[$fd_init+$i]                            # i-th flag file descriptor
-	threads_flags[$i]="/tmp/flags/thread$i"      # populate flag list
+	threads_flags[$i]="/tmp/flags_$PID/thread$i"      # populate flag list
 	exec {FD}<> "${threads_flags[$i]}"           # open i-th flag file rw mode
 done
 
 # messages handler exitflag
 handler_flag_fd=300
-handler_flag="/tmp/flags/handler_flag"
+handler_flag="/tmp/flags_$PID/handler_flag"
 exec {handler_flag_fd}<> "$handler_flag"
 echo "0" > "$handler_flag"
 
 # messages handler fifo init
-handler_fifo="/tmp/flags/handler"                     # handler fifo
+handler_fifo="/tmp/flags_$PID/handler"                     # handler fifo
 [[ ! -p $handler_fifo ]] && mkfifo $handler_fifo      # open handler fifo
 
 # messages lock file
-msg_lock="/tmp/lock/msg_lock"
+msg_lock="/tmp/lock_$PID/msg_lock"
 msg_lock_fd=301
 exec {msg_lock_fd}> ${msg_lock}
 
 # echo lock file
-echo_lock="/tmp/lock/echo_lock"
+echo_lock="/tmp/lock_$PID/echo_lock"
 echo_lock_fd=302
 exec {echo_lock_fd}> ${echo_lock}
 
 # open progress bar flag file
 pbar_flag_fd=303
-pbar_flag="/tmp/flags/pbar_flag"
+pbar_flag="/tmp/flags_$PID/pbar_flag"
 exec {pbar_flag_fd}<> "$pbar_flag"
 
 if [[ $loadsnap == true ]]; then
@@ -1040,7 +1041,7 @@ fi
 # open progress graph flag file
 if [[ $graph == true ]]; then
 	pgraph_flag_fd=304
-	pgraph_flag="/tmp/flags/pgraph_flag"
+	pgraph_flag="/tmp/flags_$PID/pgraph_flag"
 	exec {pgraph_flag_fd}<> "$pgraph_flag"
 fi
 
