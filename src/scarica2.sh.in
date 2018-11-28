@@ -343,7 +343,7 @@ function exit_error
         $CL_ERROR)
         printf "${E}Error:${Reset} content length is 0\n" 1>&2
         printf "the number of bytes downloaded by a single thread cannot be calculated\n\n" 1>&2
-        curl $proxy -sI "$2" 1>&2
+        curl $proxy -sIL "$2" 1>&2
         printf "try with wget or curl directly\n\n" 1>&2
         Play $ERROR_SOUND
         exit $CL_ERROR
@@ -500,7 +500,7 @@ function RunThread
         # curl donwnload the chunk and dd write on $output in the foffset position
         # the dd's progress informations will be written to a file. stdbuf -oL force the flush on stdout line by line
         # the flush is needed because threads progress will be plotted using gnuplot if required
-        curl -f --range ${foffset}-${fstop} $proxy "$url" 2>$flog | dd of="$output" $ddargs seek=$foffset 2>&1 | stdbuf -oL tr '\r' '\n' >> $fdata
+        curl -fL --range ${foffset}-${fstop} $proxy "$url" 2>$flog | dd of="$output" $ddargs seek=$foffset 2>&1 | stdbuf -oL tr '\r' '\n' >> $fdata
         
         # if the connection drop continue the download updating the offset
         bytes_copied=$(tail -n1 $fdata | stdbuf -oL awk '/bytes/ { print $1 }')
@@ -580,7 +580,7 @@ function StartThread
         # download (fstop-foffset) bytes of the file in a temp file
         # if the foffset byte is equal to the fstop byte then the chunk
         # is completely downloaded
-        curl -s --range ${foffset}-${fstop} $proxy "$url" > "${ffname}.tmp"
+        curl -sL --range ${foffset}-${fstop} $proxy "$url" > "${ffname}.tmp"
         if [ -e "${ffname}.tmp" ]; then
             grep ERROR "${ffname}.tmp" >> /dev/null
             if [ $? -eq 0 -a "$(file \"${ffname}.tmp\" |awk '{ print $2 }')" == "HTML" ]; then
@@ -1055,7 +1055,7 @@ fi
 content_length=0
 content_left=0
 while [[ $content_length -eq 0 ]]; do
-    headers=$(curl $proxy -sI "$url")
+    headers=$(curl $proxy -sIL "$url")
     set $headers
     file_ext=""
     location=""
