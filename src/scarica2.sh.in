@@ -351,7 +351,7 @@ function exit_error
         $CL_ERROR)
         printf "${E}Error:${Reset} content length is 0\n" 1>&2
         printf "the number of bytes downloaded by a single thread cannot be calculated\n\n" 1>&2
-        curl $proxy -sI "$2" 1>&2
+        curl $proxy -sIL "$2" 1>&2
         printf "try with wget or curl directly\n\n" 1>&2
         Play $ERROR_SOUND
         exit $CL_ERROR
@@ -1063,7 +1063,7 @@ fi
 content_length=0
 content_left=0
 while [[ $content_length -eq 0 ]]; do
-    headers=$(curl $proxy -sI "$url")
+    headers=$(curl $proxy -sIL "$url")
     set $headers
     file_ext=""
     location=""
